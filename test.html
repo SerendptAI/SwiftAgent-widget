@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Widget Test (Cross-Origin)</title>
+  <style>
+    body { font-family: sans-serif; padding: 100px 40px; }
+    h1 { margin-bottom: 20px; }
+    p { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>Widget Bundle Test Page</h1>
+  <p>This page simulates a customer's website loading the widget cross-origin.</p>
+  <p>Open this via Live Server or any other local server — NOT from localhost:3000.</p>
+
+  <!-- crossorigin="anonymous" ensures proper error reporting and CORS behavior -->
+  <script
+    src="http://localhost:3000/widget-ui.js"
+    data-company-id="01490b45-52bd-4317-b2f7-e93264210201"
+    crossorigin="anonymous"
+    defer
+  ></script>
+</body>
+</html>
