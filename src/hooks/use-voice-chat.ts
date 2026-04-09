@@ -223,7 +223,9 @@ export function useVoiceChat({
   useEffect(() => {
     if (!isActive) return;
 
-    const wssUrl = `wss://api.swiftagents.org/api/v1/voice/${companyId}/call`;
+    const baseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
+    const wsBase = baseUrl.replace(/^http/, "ws");
+    const wssUrl = `${wsBase}/api/v1/voice/${companyId}/call`;
     const socket = new WebSocket(wssUrl);
     socketRef.current = socket;
 
