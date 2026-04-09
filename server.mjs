@@ -16,6 +16,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import multer from "multer";
 import fs from "fs";
 import https from "https";
 import path from "path";
@@ -35,28 +36,36 @@ if (!ELEVENLABS_API_KEY) {
 }
 
 const app = express();
+const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors());
 
 // --- STT endpoint ---
 
-app.post("/api/v1/stt", async (req, res) => {
+app.post("/api/v1/stt", upload.single("audio"), async (req, res) => {
   try {
-    // Collect the raw body (multipart form from the widget)
-    const chunks = [];
-    for await (const chunk of req) chunks.push(chunk);
-    const rawBody = Buffer.concat(chunks);
+    console.log("[STT] file:", req.file ? `${req.file.originalname} (${req.file.mimetype}, ${req.file.buffer.length} bytes)` : "MISSING");
 
-    // Forward as-is to ElevenLabs (same multipart boundary)
+    if (!req.file) {
+      return res.status(400).json({ error: "Missing audio file" });
+    }
+
+    // Build a proper FormData for ElevenLabs
+    const body = new FormData();
+    body.append(
+      "file",
+      new Blob([req.file.buffer], { type: req.file.mimetype }),
+      req.file.originalname || "audio.webm",
+    );
+    body.append("model_id", "scribe_v1");
+    body.append("language_code", "en");
+
     const response = await fetch(
       "https://api.elevenlabs.io/v1/speech-to-text",
       {
         method: "POST",
-        headers: {
-          "xi-api-key": ELEVENLABS_API_KEY,
-          "Content-Type": req.headers["content-type"],
-        },
-        body: rawBody,
+        headers: { "xi-api-key": ELEVENLABS_API_KEY },
+        body,
       },
     );
 
