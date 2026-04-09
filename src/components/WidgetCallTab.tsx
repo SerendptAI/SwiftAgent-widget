@@ -1,6 +1,6 @@
 import { MoreHorizontal } from "lucide-react";
 
-import { getBaseUrl } from "../lib/api-client";
+import aiblockSvg from "../../images/aiblock.svg";
 import { cn } from "../lib/cn";
 import { Icons } from "./icons";
 import { getFriendlyStatus } from "./utils";
@@ -65,7 +65,7 @@ export function WidgetCallTab({
       <div className="widget-animate-scale-in flex items-center justify-center py-6">
         <div className="flex h-48 w-48 items-center justify-center rounded-full">
           <img
-            src={`${getBaseUrl()}/images/aiblock.svg`}
+            src={aiblockSvg}
             alt="AI Avatar"
             width={192}
             height={192}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { localApiClient } from "../lib/api-client";
+import { voiceApiClient } from "../lib/api-client";
 import { useSTT } from "./use-stt";
 
 export interface VoiceChatOptions {
@@ -170,7 +170,7 @@ export function useVoiceChat({
         handleStatusChange("Speaking");
         sttAbortRef.current(); // Stop listening while speaking
 
-        const { data: blob } = await localApiClient.post(
+        const { data: blob } = await voiceApiClient.post(
           "/api/v1/tts",
           { text },
           { signal: controller.signal, responseType: "blob" },

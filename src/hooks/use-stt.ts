@@ -1,6 +1,6 @@
 import { useCallback, useRef } from "react";
 
-import { localApiClient } from "../lib/api-client";
+import { voiceApiClient } from "../lib/api-client";
 
 // --- Types ---
 
@@ -84,7 +84,7 @@ export function useSTT({
       const form = new FormData();
       form.append("audio", blob);
 
-      const { data } = await localApiClient.post("/api/v1/stt", form, {
+      const { data } = await voiceApiClient.post("/api/v1/stt", form, {
         signal: controller.signal,
       });
 

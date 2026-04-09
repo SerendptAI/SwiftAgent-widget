@@ -21,6 +21,12 @@ export const localApiClient = axios.create({
   timeout: 30_000,
 });
 
+/** Client for STT/TTS calls — points to the voice proxy server, not the main API */
+export const voiceApiClient = axios.create({
+  baseURL: import.meta.env.VITE_VOICE_API_URL ?? "",
+  timeout: 30_000,
+});
+
 /** Client for calling the public backend API directly */
 export const publicApiClient = axios.create({
   headers: { "Content-Type": "application/json" },
