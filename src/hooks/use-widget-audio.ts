@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
 
-import { getBaseUrl } from "../lib/api-client";
+import dialingMp3 from "../../audio/dialing.mp3";
+import pickAudio from "../../audio/pick_audio.aac";
+import touchAudio from "../../audio/touch_audio.aac";
 
 /** Create an Audio element with preload. */
 function createAudio(src: string): HTMLAudioElement {
@@ -22,10 +24,9 @@ export function useWidgetAudio(): UseWidgetAudioReturn {
   const touchAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    const base = getBaseUrl();
-    dialingAudioRef.current = createAudio(`${base}/audio/dialing.mp3`);
-    pickupAudioRef.current = createAudio(`${base}/audio/pick_audio.aac`);
-    touchAudioRef.current = createAudio(`${base}/audio/touch_audio.aac`);
+    dialingAudioRef.current = createAudio(dialingMp3);
+    pickupAudioRef.current = createAudio(pickAudio);
+    touchAudioRef.current = createAudio(touchAudio);
     if (dialingAudioRef.current) dialingAudioRef.current.loop = true;
   }, []);
 

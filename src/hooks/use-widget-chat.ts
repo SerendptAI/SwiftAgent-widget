@@ -74,11 +74,10 @@ export function useWidgetChat({
       const agentMsgId = Date.now() + 1;
 
       try {
-        const res = await fetch(`${getBaseUrl()}/api/v1/chat`, {
+        const res = await fetch(`${getBaseUrl()}/api/v1/chat/${companyId}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            company_id: companyId,
             session_id: chatSessionId,
             message: text,
           }),

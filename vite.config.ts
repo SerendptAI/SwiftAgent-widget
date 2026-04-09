@@ -32,6 +32,7 @@ export default defineConfig({
     },
     // Single output file, no chunk splitting
     cssCodeSplit: false,
+    assetsInlineLimit: 10 * 1024 * 1024, // Inline audio files as base64 data URIs
     commonjsOptions: { transformMixedEsModules: true },
     outDir: "dist",
     emptyOutDir: true,

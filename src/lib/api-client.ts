@@ -32,11 +32,10 @@ export const publicApiClient = axios.create({
  * Called once from main.tsx when the widget mounts.
  */
 export function initApiClients(baseUrl: string) {
+  // Env var takes priority over the script-tag base URL
+  if (import.meta.env.VITE_API_BASE_URL) return;
+
   const cleanBase = baseUrl.replace(/\/$/, "");
   _baseUrl = cleanBase;
   localApiClient.defaults.baseURL = cleanBase;
-  // The public API URL is derived from the env var baked into the Next.js app,
-  // but for the widget bundle we route through the Next.js proxy routes instead.
-  // The publicApiClient calls the backend directly — we'll use the same origin
-  // and let the Next.js API routes handle proxying.
 }
