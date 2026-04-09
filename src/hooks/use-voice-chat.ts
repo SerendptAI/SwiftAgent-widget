@@ -171,7 +171,7 @@ export function useVoiceChat({
         sttAbortRef.current(); // Stop listening while speaking
 
         const { data: blob } = await localApiClient.post(
-          "/api/tts",
+          "/api/v1/tts",
           { text },
           { signal: controller.signal, responseType: "blob" },
         );

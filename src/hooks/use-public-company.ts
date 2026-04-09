@@ -27,7 +27,7 @@ function fetchCompanyOnce(companyId: string): Promise<Company | null> {
   companyCache.set(companyId, null);
 
   return localApiClient
-    .get<Company>(`/api/companies/${companyId}/public`)
+    .get<Company>(`/api/v1/companies/${companyId}/public`)
     .then((res) => {
       companyCache.set(companyId, res.data);
       return res.data;

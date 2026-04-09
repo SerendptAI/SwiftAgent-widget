@@ -347,6 +347,9 @@ function autoMount() {
   if (!companyId) return; // No data attr = framework will call mount() manually
 
   const baseUrl = (() => {
+    // Prefer explicit data-base-url attribute over auto-detected origin
+    const explicit = script?.getAttribute("data-base-url");
+    if (explicit) return explicit.replace(/\/$/, "");
     const src = script?.getAttribute("src") ?? "";
     try {
       return new URL(src, window.location.href).origin;

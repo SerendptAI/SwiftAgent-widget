@@ -74,7 +74,7 @@ export function useWidgetChat({
       const agentMsgId = Date.now() + 1;
 
       try {
-        const res = await fetch(`${getBaseUrl()}/api/chat`, {
+        const res = await fetch(`${getBaseUrl()}/api/v1/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

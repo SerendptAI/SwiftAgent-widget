@@ -4,7 +4,7 @@ import axios from "axios";
  * Creates an axios client for calling the SwiftAgent API routes.
  * baseUrl is injected at mount time from the widget.js loader script.
  */
-let _baseUrl = "";
+let _baseUrl = "https://api.swiftagents.org";
 
 export function setBaseUrl(url: string) {
   _baseUrl = url.replace(/\/$/, "");
@@ -17,7 +17,7 @@ export function getBaseUrl() {
 
 /** Client for calling Next.js proxy routes (/api/tts, /api/stt, /api/chat, /api/visitors) */
 export const localApiClient = axios.create({
-  baseURL: "",
+  baseURL: "https://api.swiftagents.org",
   timeout: 30_000,
 });
 

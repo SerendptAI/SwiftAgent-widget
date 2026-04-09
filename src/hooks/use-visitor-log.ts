@@ -36,7 +36,7 @@ export function useVisitorLog(companyId: string) {
           "https://api.ipify.org?format=json",
         );
         if (ipData.ip) {
-          await localApiClient.post("/api/visitors", {
+          await localApiClient.post("/api/v1/visitors", {
             company_id: companyId,
             ip_address: ipData.ip,
           });

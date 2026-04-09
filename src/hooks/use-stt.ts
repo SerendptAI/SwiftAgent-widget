@@ -84,7 +84,7 @@ export function useSTT({
       const form = new FormData();
       form.append("audio", blob);
 
-      const { data } = await localApiClient.post("/api/stt", form, {
+      const { data } = await localApiClient.post("/api/v1/stt", form, {
         signal: controller.signal,
       });
 
