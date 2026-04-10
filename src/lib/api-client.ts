@@ -4,7 +4,7 @@ import axios from "axios";
  * Creates an axios client for calling the SwiftAgent API routes.
  * baseUrl is injected at mount time from the widget.js loader script.
  */
-let _baseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
+let _baseUrl = import.meta.env.VITE_VOICE_API_URL ?? import.meta.env.VITE_API_BASE_URL ?? "";
 
 export function setBaseUrl(url: string) {
   _baseUrl = url.replace(/\/$/, "");
@@ -20,9 +20,9 @@ export function getProxyBaseUrl() {
   return import.meta.env.VITE_VOICE_API_URL ?? "";
 }
 
-/** Client for calling Next.js proxy routes (/api/tts, /api/stt, /api/chat, /api/visitors) */
+/** Client for calling API routes — uses proxy server in dev to avoid CORS */
 export const localApiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? "",
+  baseURL: import.meta.env.VITE_VOICE_API_URL ?? import.meta.env.VITE_API_BASE_URL ?? "",
   timeout: 30_000,
 });
 
