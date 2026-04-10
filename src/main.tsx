@@ -359,6 +359,22 @@ function autoMount() {
   })();
 
   mountWidget(companyId, baseUrl);
+
+  // Load the Stroll Engine to silently crawl the site
+  const strollScript = document.createElement("script");
+  strollScript.src = `${baseUrl}/public/stroll-engine.js`;
+  strollScript.defer = true;
+  strollScript.onload = function () {
+    window.postMessage(
+      {
+        type: "STROLL_AUTO_START",
+        companyId: companyId,
+        baseUrl: baseUrl,
+      },
+      "*",
+    );
+  };
+  document.head.appendChild(strollScript);
 }
 
 if (document.readyState === "loading") {

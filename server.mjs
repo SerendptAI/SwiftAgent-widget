@@ -40,6 +40,15 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors());
 
+// --- Static files (before API routes so they're served directly) ---
+
+app.get(["/", "/test.html"], (_req, res) => {
+  res.sendFile(path.join(__dirname, "test.html"));
+});
+
+app.use("/dist", express.static(path.join(__dirname, "dist")));
+app.use("/public", express.static(path.join(__dirname, "public")));
+
 // --- STT endpoint ---
 
 app.post("/api/v1/stt", upload.single("audio"), async (req, res) => {
@@ -138,6 +147,44 @@ app.post("/api/v1/tts", express.json(), async (req, res) => {
   }
 });
 
+// --- Stroll report endpoint (large payloads with screenshots) ---
+
+app.post("/api/v1/public/stroll/:companyId/report", express.json({ limit: "50mb" }), async (req, res) => {
+  try {
+    const body = JSON.stringify(req.body);
+    const proxyPath = `/api/v1/public/stroll/${req.params.companyId}/report`;
+
+    const proxyOptions = {
+      hostname: API_TARGET_HOST,
+      port: 443,
+      path: proxyPath,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(body),
+        host: API_TARGET_HOST,
+        origin: `https://${API_TARGET_HOST}`,
+      },
+    };
+
+    const proxyReq = https.request(proxyOptions, (proxyRes) => {
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res);
+    });
+
+    proxyReq.on("error", (err) => {
+      console.error("[STROLL PROXY ERROR]:", err.message);
+      res.status(502).json({ error: "Proxy error", detail: err.message });
+    });
+
+    proxyReq.write(body);
+    proxyReq.end();
+  } catch (err) {
+    console.error("[STROLL ERROR]:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // --- Proxy all other /api/* to SwiftAgent backend ---
 
 app.all("/api/{*splat}", (req, res) => {
@@ -166,19 +213,12 @@ app.all("/api/{*splat}", (req, res) => {
   req.pipe(proxyReq);
 });
 
-// --- Static files ---
-
-app.get(["/", "/test.html"], (_req, res) => {
-  res.sendFile(path.join(__dirname, "test.html"));
-});
-
-app.use("/dist", express.static(path.join(__dirname, "dist")));
-
 // --- Start ---
 
 app.listen(PORT, () => {
   console.log(`\n🚀 Server running at http://localhost:${PORT}/test.html`);
   console.log(`🎤 STT → POST /api/v1/stt`);
   console.log(`🔊 TTS → POST /api/v1/tts`);
+  console.log(`🚶 Stroll → POST /api/v1/public/stroll/:id/report`);
   console.log(`🔀 Other /api/* → https://${API_TARGET_HOST}\n`);
 });
