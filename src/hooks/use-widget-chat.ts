@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { ChatMsg, NavigationGuide } from "../components/types";
-import { getBaseUrl } from "../lib/api-client";
+import { getBaseUrl, getProxyBaseUrl } from "../lib/api-client";
 
 interface UseWidgetChatOptions {
   companyId: string;
@@ -74,7 +74,7 @@ export function useWidgetChat({
       const agentMsgId = Date.now() + 1;
 
       try {
-        const res = await fetch(`${getBaseUrl()}/api/v1/chat/${companyId}/chat`, {
+        const res = await fetch(`${getProxyBaseUrl()}/api/v1/chat/${companyId}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

@@ -15,6 +15,11 @@ export function getBaseUrl() {
   return _baseUrl;
 }
 
+/** Base URL that goes through the local proxy server (avoids CORS issues) */
+export function getProxyBaseUrl() {
+  return import.meta.env.VITE_VOICE_API_URL ?? "";
+}
+
 /** Client for calling Next.js proxy routes (/api/tts, /api/stt, /api/chat, /api/visitors) */
 export const localApiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? "",
