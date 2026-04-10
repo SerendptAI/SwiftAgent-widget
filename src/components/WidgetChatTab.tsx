@@ -31,8 +31,8 @@ export function WidgetChatTab({
   setActiveWidgetTab,
   setIsMinimized,
 }: WidgetChatTabProps) {
-  const initial = companyName ? companyName.charAt(0).toUpperCase() : "W";
-  const displayName = companyName || "WELLSPRING NETWORKS SWIFT AGENTS";
+  const initial = companyName ? companyName.charAt(0).toUpperCase() : "";
+  const displayName = companyName || "";
 
   return (
     <div

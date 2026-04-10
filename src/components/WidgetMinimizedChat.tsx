@@ -29,8 +29,8 @@ export function WidgetMinimizedChat({
   chatEndRef,
   setIsMinimized,
 }: WidgetMinimizedChatProps) {
-  const initial = companyName ? companyName.charAt(0).toUpperCase() : "W";
-  const displayName = companyName || "WELLSPRING NETWORKS";
+  const initial = companyName ? companyName.charAt(0).toUpperCase() : "";
+  const displayName = companyName || "";
 
   // Memoize to avoid creating new Date on every re-render
   const timeLabel = useMemo(() => {
