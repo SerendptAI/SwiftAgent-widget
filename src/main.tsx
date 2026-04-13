@@ -97,6 +97,14 @@ function WidgetContent({ companyId }: { companyId: string }) {
 
   return (
     <div className="fixed inset-0 flex flex-col items-end justify-end font-sans pointer-events-none">
+      {/* Backdrop */}
+      {chatOpen && (
+        <div
+          className="pointer-events-auto widget-animate-fade-in fixed inset-0 bg-black/40"
+          onClick={() => setChatOpen(false)}
+        />
+      )}
+
       {/* Chat panel */}
       {chatOpen && (
         <div
