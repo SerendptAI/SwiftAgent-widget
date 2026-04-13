@@ -1,108 +1,65 @@
 /**
  * SwiftAgent Stroll Engine
  *
- * Runs in the PARENT page (the customer's website).
- * Automatically crawls every page on the site, captures screenshots,
- * maps interactive elements, and uploads a full report to the backend.
+ * Browser-side crawler that runs in the customer's website.
  *
  * Flow:
- * 1. On each page: wait for settle, screenshot, map elements, store node
- * 2. Navigate to next unvisited internal link
- * 3. When queue is empty: upload full report via POST /api/v1/public/stroll/{company_id}/report
+ *   1. Capture the host page (the one the widget is on)
+ *   2. Discover links (sitemap.xml + robots.txt + DOM)
+ *   3. Load each discovered URL into a hidden iframe and capture it
+ *   4. Upload a single report to POST /api/v1/public/stroll/{companyId}/report
+ *   5. Schedule the next crawl via localStorage so the cron fires on a future visit
  *
- * State persists across page loads via sessionStorage.
+ * The crawl runs within one page lifetime — nodes live in memory, not sessionStorage.
  */
 (function () {
   "use strict";
 
+  // Don't run inside iframes (prevents recursive execution when crawling pages
+  // that also embed the widget).
+  if (window !== window.top) return;
   if (window.__SWIFT_AGENT_STROLL_ENGINE__) return;
   window.__SWIFT_AGENT_STROLL_ENGINE__ = true;
 
-  // ── Config ─────────────────────────────────────────────────────────────────
-  var STORAGE_KEY = "__swift_stroll_state__";
-  var NODES_KEY = "__swift_stroll_nodes__";
-  var CRON_KEY = "__swift_stroll_cron__";
+  // ── Constants ──────────────────────────────────────────────────────────────
   var MAX_PAGES = 200;
-  var SETTLE_DELAY = 2500;
-  var NAV_DELAY = 1000;
+  var MAX_SUB_SITEMAPS = 10;
+  var SETTLE_DELAY_MS = 2500;
+  var NAV_DELAY_MS = 1000;
+  var IFRAME_LOAD_TIMEOUT_MS = 15000;
+  var SECTION_CAPTURE_DELAY_MS = 150;
   var SCREENSHOT_QUALITY = 0.7;
-  var RECRAWL_INTERVAL_MS = 60 * 60 * 1000; // Re-crawl every 60 minutes
+  var RECRAWL_INTERVAL_MS = 60 * 60 * 1000;
+  var MIN_SECTION_HEIGHT = 50;
+  var MIN_FALLBACK_SECTION_HEIGHT = 150;
+
   var HTML2CANVAS_CDN =
     "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
 
-  // ── State helpers (sessionStorage) ─────────────────────────────────────────
-  function getState() {
-    try {
-      var raw = sessionStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (e) {
-      return null;
-    }
-  }
+  var CRON_KEY = "__swift_stroll_cron__";
+  var WIDGET_ROOT_ID = "swift-agent-widget-root";
+  var IFRAME_ID = "__swift_stroll_iframe__";
 
-  function setState(state) {
-    try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (e) {
-      console.error("[Stroll] Failed to save state:", e);
-    }
-  }
+  var MSG = {
+    READY: "STROLL_ENGINE_READY",
+    START: "STROLL_AUTO_START",
+    PROGRESS: "STROLL_PROGRESS",
+    UPLOADING: "STROLL_UPLOADING",
+    COMPLETE: "STROLL_COMPLETE",
+    ERROR: "STROLL_ERROR",
+  };
 
-  function getNodes() {
-    try {
-      var raw = sessionStorage.getItem(NODES_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch (e) {
-      return [];
-    }
-  }
+  var INTERACTIVE_SELECTORS =
+    'a, button, input, select, textarea, [role="button"], [role="tab"], [role="link"], [role="menuitem"], [onclick], [tabindex]';
 
-  function addNode(node) {
-    var nodes = getNodes();
-    nodes.push(node);
-    try {
-      sessionStorage.setItem(NODES_KEY, JSON.stringify(nodes));
-    } catch (e) {
-      console.error("[Stroll] Failed to save node (storage full?):", e);
-    }
-  }
+  var SECTION_TAGS = [
+    "header", "nav", "main", "section", "article", "aside", "footer",
+    '[role="banner"]', '[role="navigation"]', '[role="main"]',
+    '[role="contentinfo"]', '[role="complementary"]',
+  ];
 
-  function clearAll() {
-    sessionStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem(NODES_KEY);
-  }
-
-  function initState(companyId, baseUrl) {
-    return {
-      companyId: companyId,
-      baseUrl: baseUrl,
-      active: true,
-      visited: [],
-      queue: [],
-      startedAt: new Date().toISOString(),
-      _doneKey: "__swift_stroll_done_" + companyId + "__",
-    };
-  }
-
-  // ── Load html2canvas ───────────────────────────────────────────────────────
-  function loadHtml2Canvas() {
-    return new Promise(function (resolve) {
-      if (window.html2canvas) {
-        resolve();
-        return;
-      }
-      var script = document.createElement("script");
-      script.src = HTML2CANVAS_CDN;
-      script.onload = function () {
-        resolve();
-      };
-      script.onerror = function () {
-        console.error("[Stroll] Failed to load html2canvas");
-        resolve();
-      };
-      document.head.appendChild(script);
-    });
-  }
+  var UNSAFE_CSS_FN_RE =
+    /\b(lab|lch|oklch|oklab|color-mix|color|light-dark|hwb)\s*\([^()]*(?:\([^()]*\)[^()]*)*\)/gi;
 
   // ── URL helpers ────────────────────────────────────────────────────────────
   function normalizeUrl(url) {
@@ -119,7 +76,7 @@
   function generateSelector(el) {
     if (el.id) return "#" + el.id;
     var parts = [];
-    while (el && el !== document.body && el !== document.documentElement) {
+    while (el && el.tagName && el !== el.ownerDocument.body && el !== el.ownerDocument.documentElement) {
       var tag = el.tagName.toLowerCase();
       var parent = el.parentElement;
       if (parent) {
@@ -127,8 +84,7 @@
           return c.tagName === el.tagName;
         });
         if (siblings.length > 1) {
-          var idx = siblings.indexOf(el) + 1;
-          tag += ":nth-of-type(" + idx + ")";
+          tag += ":nth-of-type(" + (siblings.indexOf(el) + 1) + ")";
         }
       }
       parts.unshift(tag);
@@ -137,258 +93,33 @@
     return parts.join(" > ");
   }
 
-  // ── Discover internal links ────────────────────────────────────────────────
-  function discoverLinks(visited, queue) {
-    var links = [];
-    var seen = {};
-    var allAnchors = document.querySelectorAll("a[href]");
-
-    allAnchors.forEach(function (a) {
-      if (a.closest("#swift-agent-widget-root")) return;
-
-      var href = a.getAttribute("href");
-      if (
-        !href ||
-        href.startsWith("#") ||
-        href.startsWith("javascript:") ||
-        href.startsWith("mailto:") ||
-        href.startsWith("tel:")
-      )
-        return;
-
-      var normalized = normalizeUrl(href);
-      if (!normalized) return;
-      if (seen[normalized]) return;
-      if (visited.indexOf(normalized) !== -1) return;
-      if (queue.indexOf(normalized) !== -1) return;
-
-      seen[normalized] = true;
-      links.push(normalized);
-    });
-
-    return links;
-  }
-
-  // ── Parse sitemap.xml to seed the crawl queue ──────────────────────────────
-  function fetchSitemap(visited, queue) {
-    var sitemapUrls = [
-      window.location.origin + "/sitemap.xml",
-      window.location.origin + "/sitemap_index.xml",
-      window.location.origin + "/sitemap-index.xml",
-    ];
-
-    function parseSitemapXml(text) {
-      var links = [];
-      try {
-        var parser = new DOMParser();
-        var doc = parser.parseFromString(text, "text/xml");
-
-        // Check for sitemap index (contains <sitemap><loc>...</loc></sitemap>)
-        var sitemapLocs = doc.querySelectorAll("sitemap > loc");
-        if (sitemapLocs.length > 0) {
-          // Return sub-sitemap URLs to fetch next
-          var subUrls = [];
-          sitemapLocs.forEach(function (loc) {
-            subUrls.push(loc.textContent.trim());
-          });
-          return { type: "index", urls: subUrls };
-        }
-
-        // Regular sitemap — extract <url><loc>...</loc></url>
-        var urlLocs = doc.querySelectorAll("url > loc");
-        urlLocs.forEach(function (loc) {
-          var normalized = normalizeUrl(loc.textContent.trim());
-          if (
-            normalized &&
-            visited.indexOf(normalized) === -1 &&
-            queue.indexOf(normalized) === -1 &&
-            links.indexOf(normalized) === -1
-          ) {
-            links.push(normalized);
-          }
-        });
-        return { type: "urls", urls: links };
-      } catch (e) {
-        return { type: "urls", urls: [] };
-      }
-    }
-
-    function fetchAndParse(url) {
-      return fetch(url)
-        .then(function (res) {
-          if (!res.ok) return { type: "urls", urls: [] };
-          return res.text().then(parseSitemapXml);
-        })
-        .catch(function () {
-          return { type: "urls", urls: [] };
-        });
-    }
-
-    // Try each sitemap URL, collect all discovered page URLs
-    var allLinks = [];
-
-    return sitemapUrls
-      .reduce(function (chain, url) {
-        return chain.then(function () {
-          return fetchAndParse(url).then(function (result) {
-            if (result.type === "index") {
-              // Fetch each sub-sitemap
-              return result.urls
-                .slice(0, 10) // cap sub-sitemaps
-                .reduce(function (subChain, subUrl) {
-                  return subChain.then(function () {
-                    return fetchAndParse(subUrl).then(function (subResult) {
-                      allLinks = allLinks.concat(subResult.urls);
-                    });
-                  });
-                }, Promise.resolve());
-            } else {
-              allLinks = allLinks.concat(result.urls);
-            }
-          });
-        });
-      }, Promise.resolve())
-      .then(function () {
-        // Deduplicate
-        var seen = {};
-        return allLinks.filter(function (url) {
-          if (seen[url]) return false;
-          seen[url] = true;
-          return true;
-        });
-      });
-  }
-
-  // ── Fetch robots.txt for additional sitemap references ─────────────────────
-  function fetchRobotsSitemaps(visited, queue) {
-    return fetch(window.location.origin + "/robots.txt")
-      .then(function (res) {
-        if (!res.ok) return [];
-        return res.text().then(function (text) {
-          var links = [];
-          var lines = text.split("\n");
-          lines.forEach(function (line) {
-            var match = line.match(/^Sitemap:\s*(.+)/i);
-            if (match) {
-              var url = match[1].trim();
-              var normalized = normalizeUrl(url);
-              if (normalized) links.push(url);
-            }
-          });
-          return links;
-        });
-      })
-      .catch(function () {
-        return [];
-      });
-  }
-
-  // ── Combined discovery: sitemap + robots.txt + DOM links ───────────────────
-  function fullDiscovery(state) {
-    var visited = state.visited;
-    var queue = state.queue;
-
-    return Promise.all([
-      fetchSitemap(visited, queue),
-      fetchRobotsSitemaps(visited, queue),
-    ]).then(function (results) {
-      var sitemapLinks = results[0];
-      var robotsSitemapUrls = results[1];
-
-      // If robots.txt had sitemap URLs we haven't tried, fetch them too
-      var extraPromises = robotsSitemapUrls.map(function (url) {
-        return fetch(url)
-          .then(function (res) {
-            if (!res.ok) return [];
-            return res.text().then(function (text) {
-              try {
-                var parser = new DOMParser();
-                var doc = parser.parseFromString(text, "text/xml");
-                var locs = doc.querySelectorAll("url > loc");
-                var links = [];
-                locs.forEach(function (loc) {
-                  var n = normalizeUrl(loc.textContent.trim());
-                  if (n && visited.indexOf(n) === -1 && queue.indexOf(n) === -1)
-                    links.push(n);
-                });
-                return links;
-              } catch (e) {
-                return [];
-              }
-            });
-          })
-          .catch(function () {
-            return [];
-          });
-      });
-
-      return Promise.all(extraPromises).then(function (extraResults) {
-        var allExtra = [];
-        extraResults.forEach(function (r) {
-          allExtra = allExtra.concat(r);
-        });
-
-        // Combine sitemap + robots + DOM-discovered links
-        var domLinks = discoverLinks(visited, queue);
-        var combined = sitemapLinks.concat(allExtra).concat(domLinks);
-
-        // Deduplicate
-        var seen = {};
-        visited.forEach(function (v) { seen[v] = true; });
-        queue.forEach(function (q) { seen[q] = true; });
-
-        return combined.filter(function (url) {
-          if (seen[url]) return false;
-          seen[url] = true;
-          return true;
-        });
-      });
-    });
-  }
-
-  // ── Map interactive elements (matches backend schema) ──────────────────────
-  function mapInteractiveElements() {
-    var selectors =
-      'a, button, input, select, textarea, [role="button"], [role="tab"], [role="link"], [role="menuitem"], [onclick], [tabindex]';
-    var allEls = document.querySelectorAll(selectors);
+  // ── Unified element mapper (works for any document/window/root) ────────────
+  function mapElements(root, win) {
     var elements = [];
-
-    allEls.forEach(function (el) {
-      if (el.closest("#swift-agent-widget-root")) return;
+    root.querySelectorAll(INTERACTIVE_SELECTORS).forEach(function (el) {
+      if (el.closest("#" + WIDGET_ROOT_ID)) return;
 
       var rect = el.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return;
 
-      var style = window.getComputedStyle(el);
-      if (
-        style.display === "none" ||
-        style.visibility === "hidden" ||
-        style.opacity === "0"
-      )
-        return;
+      var style = win.getComputedStyle(el);
+      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return;
 
-      var label = "";
-      if (el.innerText) label = el.innerText.trim().substring(0, 100);
-      else if (el.getAttribute("aria-label"))
-        label = el.getAttribute("aria-label");
-      else if (el.getAttribute("title")) label = el.getAttribute("title");
-      else if (el.getAttribute("placeholder"))
-        label = el.getAttribute("placeholder");
-      else if (el.getAttribute("alt")) label = el.getAttribute("alt");
+      var label =
+        (el.innerText && el.innerText.trim().substring(0, 100)) ||
+        el.getAttribute("aria-label") ||
+        el.getAttribute("title") ||
+        el.getAttribute("placeholder") ||
+        el.getAttribute("alt") ||
+        "";
 
       var type = "action";
-      if (el.tagName === "A" || el.getAttribute("role") === "link")
-        type = "nav";
-      else if (
-        el.tagName === "INPUT" ||
-        el.tagName === "SELECT" ||
-        el.tagName === "TEXTAREA"
-      )
-        type = "input";
+      if (el.tagName === "A" || el.getAttribute("role") === "link") type = "nav";
+      else if (el.tagName === "INPUT" || el.tagName === "SELECT" || el.tagName === "TEXTAREA") type = "input";
 
       elements.push({
         selector: generateSelector(el),
-        label: label || "",
+        label: label,
         type: type,
         href: el.getAttribute("href") || "",
         bbox: {
@@ -399,272 +130,294 @@
         },
       });
     });
-
     return elements;
   }
 
-  // ── html2canvas clone sanitizer (fixes modern CSS crashes) ─────────────────
+  // ── Unified link discovery (works for any document) ───────────────────────
+  function discoverLinks(doc, visitedSet, queueSet) {
+    var seen = new Set();
+    var links = [];
+    doc.querySelectorAll("a[href]").forEach(function (a) {
+      if (a.closest && a.closest("#" + WIDGET_ROOT_ID)) return;
+
+      var href = a.getAttribute("href");
+      if (
+        !href ||
+        href.startsWith("#") ||
+        href.startsWith("javascript:") ||
+        href.startsWith("mailto:") ||
+        href.startsWith("tel:")
+      ) return;
+
+      var normalized = normalizeUrl(href);
+      if (!normalized || seen.has(normalized)) return;
+      if (visitedSet.has(normalized) || queueSet.has(normalized)) return;
+
+      seen.add(normalized);
+      links.push(normalized);
+    });
+    return links;
+  }
+
+  // ── Section detection ──────────────────────────────────────────────────────
+  function detectSections(root) {
+    var seen = new Set();
+    var sections = [];
+    var win = root.ownerDocument.defaultView || window;
+
+    SECTION_TAGS.forEach(function (sel) {
+      root.querySelectorAll(sel).forEach(function (el) {
+        if (seen.has(el) || el.closest("#" + WIDGET_ROOT_ID)) return;
+        var rect = el.getBoundingClientRect();
+        if (rect.height < MIN_SECTION_HEIGHT || rect.width < 100) return;
+        var style = win.getComputedStyle(el);
+        if (style.display === "none" || style.visibility === "hidden") return;
+
+        seen.add(el);
+        sections.push({ element: el, label: sectionLabel(el) });
+      });
+    });
+
+    var container = root.querySelector("main") || root.ownerDocument.body || root;
+    Array.from(container.children || []).forEach(function (el) {
+      if (el.tagName !== "DIV" && el.tagName !== "SECTION") return;
+      if (seen.has(el) || el.closest("#" + WIDGET_ROOT_ID)) return;
+      var rect = el.getBoundingClientRect();
+      if (rect.height < MIN_FALLBACK_SECTION_HEIGHT) return;
+      var style = win.getComputedStyle(el);
+      if (style.display === "none" || style.visibility === "hidden") return;
+
+      seen.add(el);
+      sections.push({ element: el, label: sectionLabel(el) });
+    });
+
+    return sections;
+  }
+
+  function sectionLabel(el) {
+    var label = el.tagName.toLowerCase();
+    if (el.id) return label + "#" + el.id;
+    if (el.className && typeof el.className === "string") {
+      return label + "." + el.className.split(" ")[0];
+    }
+    return label;
+  }
+
+  // ── html2canvas clone sanitizer (strips modern CSS funcs that crash it) ───
   function sanitizeClone(clonedDoc) {
     var win = clonedDoc.defaultView || window;
-    var allEls = clonedDoc.querySelectorAll("*");
-    var unsafeFnRe =
-      /\b(lab|lch|oklch|oklab|color-mix|color|light-dark|hwb)\s*\([^()]*(?:\([^()]*\)[^()]*)*\)/gi;
 
-    for (var i = 0; i < allEls.length; i++) {
-      var el = allEls[i];
+    Array.from(clonedDoc.querySelectorAll("*")).forEach(function (el) {
       try {
         var computed = win.getComputedStyle(el);
         var cssText = computed.cssText;
         if (cssText) {
-          el.style.cssText = cssText.replace(unsafeFnRe, "#000000");
+          el.style.cssText = cssText.replace(UNSAFE_CSS_FN_RE, "#000000");
         } else {
-          for (var j = 0; j < computed.length; j++) {
-            var prop = computed[j];
+          for (var i = 0; i < computed.length; i++) {
+            var prop = computed[i];
             var val = computed.getPropertyValue(prop);
-            if (val && unsafeFnRe.test(val)) {
-              val = val.replace(unsafeFnRe, "#000000");
+            if (val && UNSAFE_CSS_FN_RE.test(val)) {
+              val = val.replace(UNSAFE_CSS_FN_RE, "#000000");
             }
             el.style.setProperty(prop, val);
           }
         }
-      } catch (e) {
-        /* skip */
-      }
-    }
+      } catch (e) {}
+    });
 
-    var sheets = clonedDoc.querySelectorAll('style, link[rel="stylesheet"]');
-    for (var k = 0; k < sheets.length; k++) {
-      sheets[k].parentNode.removeChild(sheets[k]);
-    }
+    clonedDoc.querySelectorAll('style, link[rel="stylesheet"]').forEach(function (el) {
+      el.parentNode.removeChild(el);
+    });
   }
 
-  // ── Screenshot helpers ─────────────────────────────────────────────────────
+  // ── Screenshot capture ─────────────────────────────────────────────────────
   function canvasToDataUrl(canvas) {
     var url = canvas.toDataURL("image/webp", SCREENSHOT_QUALITY);
     if (url.indexOf("data:image/webp") === 0) return url;
     return canvas.toDataURL("image/png");
   }
 
-  var SECTION_CAPTURE_DELAY = 150;
-
-  // ── Detect page sections ───────────────────────────────────────────────────
-  function detectSections() {
-    var sectionSelectors = [
-      "header", "nav", "main", "section", "article", "aside", "footer",
-      '[role="banner"]', '[role="navigation"]', '[role="main"]',
-      '[role="contentinfo"]', '[role="complementary"]',
-    ];
-
-    var seen = new Set();
-    var sections = [];
-
-    sectionSelectors.forEach(function (sel) {
-      document.querySelectorAll(sel).forEach(function (el) {
-        if (seen.has(el)) return;
-        if (el.closest("#swift-agent-widget-root")) return;
-        var rect = el.getBoundingClientRect();
-        if (rect.height < 50 || rect.width < 100) return;
-        var style = window.getComputedStyle(el);
-        if (style.display === "none" || style.visibility === "hidden") return;
-        seen.add(el);
-        var label = el.tagName.toLowerCase();
-        if (el.id) label += "#" + el.id;
-        else if (el.className && typeof el.className === "string")
-          label += "." + el.className.split(" ")[0];
-        sections.push({ element: el, label: label });
-      });
-    });
-
-    // Fallback: large top-level divs
-    var container = document.querySelector("main") || document.body;
-    Array.from(container.children).forEach(function (el) {
-      if (el.tagName !== "DIV" && el.tagName !== "SECTION") return;
-      if (seen.has(el)) return;
-      if (el.closest("#swift-agent-widget-root")) return;
-      var rect = el.getBoundingClientRect();
-      if (rect.height < 150) return;
-      var style = window.getComputedStyle(el);
-      if (style.display === "none" || style.visibility === "hidden") return;
-      seen.add(el);
-      var label = "div";
-      if (el.id) label += "#" + el.id;
-      else if (el.className && typeof el.className === "string")
-        label += "." + el.className.split(" ")[0];
-      sections.push({ element: el, label: label });
-    });
-
-    return sections;
+  function html2canvasOptions(extra) {
+    var base = {
+      useCORS: true,
+      allowTaint: true,
+      scale: 1,
+      logging: false,
+      ignoreElements: function (el) {
+        return el.id === WIDGET_ROOT_ID || el.id === IFRAME_ID;
+      },
+      onclone: sanitizeClone,
+    };
+    if (extra) {
+      for (var k in extra) if (extra.hasOwnProperty(k)) base[k] = extra[k];
+    }
+    return base;
   }
 
-  // ── Capture a single element ───────────────────────────────────────────────
-  function captureElement(el, opts) {
-    if (!window.html2canvas) return Promise.resolve("");
+  // Capture any element using the html2canvas reachable from `win`.
+  function captureElement(win, el, extra) {
+    var h2c = win.html2canvas || window.html2canvas;
+    if (!h2c) return Promise.resolve("");
 
-    return window
-      .html2canvas(el, Object.assign({
-        useCORS: true,
-        allowTaint: true,
-        scale: 1,
-        logging: false,
-        ignoreElements: function (element) {
-          return element.id === "swift-agent-widget-root";
-        },
-        onclone: sanitizeClone,
-      }, opts || {}))
-      .then(function (canvas) {
-        return canvasToDataUrl(canvas);
-      })
+    return h2c(el, html2canvasOptions(extra))
+      .then(canvasToDataUrl)
       .catch(function (err) {
         console.error("[Stroll] Screenshot failed:", err);
         return "";
       });
   }
 
-  function captureFullPage() {
-    window.scrollTo(0, 0);
-    return captureElement(document.body, {
-      windowWidth: document.documentElement.scrollWidth,
-      windowHeight: document.documentElement.scrollHeight,
+  function captureFullPage(win, doc) {
+    win.scrollTo(0, 0);
+    return captureElement(win, doc.body, {
+      windowWidth: doc.documentElement.scrollWidth,
+      windowHeight: doc.documentElement.scrollHeight,
     });
   }
 
-  // ── Capture sections sequentially ──────────────────────────────────────────
-  function captureSectionNodes(sections, pageUrl, pageTitle) {
-    var results = [];
-    var index = 0;
-
-    return new Promise(function (resolve) {
-      function next() {
-        if (index >= sections.length) {
-          resolve(results);
-          return;
-        }
-        var section = sections[index];
-        index++;
-
+  function captureSectionNodes(win, sections, url, title) {
+    var nodes = [];
+    return sections.reduce(function (chain, section) {
+      return chain.then(function () {
         section.element.scrollIntoView({ behavior: "instant", block: "start" });
-
-        setTimeout(function () {
-          // Map elements within this section
-          var sectionEls = [];
-          var interactives = section.element.querySelectorAll(
-            'a, button, input, select, textarea, [role="button"], [onclick]'
-          );
-          interactives.forEach(function (el) {
-            var rect = el.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) return;
-            var label = "";
-            if (el.innerText) label = el.innerText.trim().substring(0, 100);
-            else if (el.getAttribute("aria-label")) label = el.getAttribute("aria-label");
-            sectionEls.push({
-              selector: generateSelector(el),
-              label: label || "",
-              type: el.tagName === "A" ? "nav" : "action",
-              href: el.getAttribute("href") || "",
-              bbox: {
-                x: Math.round(rect.x),
-                y: Math.round(rect.y),
-                w: Math.round(rect.width),
-                h: Math.round(rect.height),
-              },
+        return delay(SECTION_CAPTURE_DELAY_MS)
+          .then(function () {
+            return captureElement(win, section.element);
+          })
+          .then(function (screenshot) {
+            if (!screenshot) return;
+            nodes.push({
+              url: url,
+              title: title + " [" + section.label + "]",
+              screenshot_base64: screenshot,
+              elements: mapElements(section.element, win),
             });
           });
-
-          captureElement(section.element).then(function (screenshot) {
-            if (screenshot) {
-              results.push({
-                url: pageUrl,
-                title: pageTitle + " [" + section.label + "]",
-                screenshot_base64: screenshot,
-                elements: sectionEls,
-              });
-            }
-            next();
-          });
-        }, SECTION_CAPTURE_DELAY);
-      }
-      next();
+      });
+    }, Promise.resolve()).then(function () {
+      return nodes;
     });
   }
 
-  // ── Upload full report ─────────────────────────────────────────────────────
-  function uploadReport(state) {
-    var nodes = getNodes();
+  // ── Ensure html2canvas is available in a given window ─────────────────────
+  function ensureHtml2Canvas(win) {
+    if (win.html2canvas) return Promise.resolve();
 
-    if (nodes.length === 0) {
-      console.log("[Stroll] Nothing to upload.");
-      clearAll();
-      return;
+    // If the top window already has it, share it across origins/windows
+    // (same-origin only — iframes of a different origin can't access parent).
+    if (win !== window && window.html2canvas) {
+      try {
+        win.html2canvas = window.html2canvas;
+        return Promise.resolve();
+      } catch (e) {}
     }
 
-    var url =
-      state.baseUrl +
-      "/api/v1/public/stroll/" +
-      state.companyId +
-      "/report";
-
-    var payload = {
-      dashboard_url: window.location.origin,
-      nodes: nodes,
-    };
-
-    notifyWidget({
-      type: "STROLL_UPLOADING",
-      count: nodes.length,
+    return new Promise(function (resolve) {
+      var doc = win.document;
+      var script = doc.createElement("script");
+      script.src = HTML2CANVAS_CDN;
+      script.onload = function () { resolve(); };
+      script.onerror = function () {
+        console.error("[Stroll] Failed to load html2canvas");
+        resolve();
+      };
+      doc.head.appendChild(script);
     });
+  }
 
-    console.log("[Stroll] Uploading report: " + nodes.length + " pages");
+  // ── Sitemap / robots discovery (parallel) ─────────────────────────────────
+  function fetchText(url) {
+    return fetch(url).then(function (res) {
+      return res.ok ? res.text() : "";
+    }).catch(function () { return ""; });
+  }
 
-    fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-      .then(function (res) {
-        if (res.ok || res.status === 202) {
-          console.log("[Stroll] Upload success!");
-          notifyWidget({
-            type: "STROLL_COMPLETE",
-            count: nodes.length,
-          });
-          if (state._doneKey) sessionStorage.setItem(state._doneKey, "true");
-          clearAll();
-        } else {
-          res.text().then(function (t) {
-            console.error("[Stroll] Upload failed:", res.status, t);
-          });
-          notifyWidget({
-            type: "STROLL_ERROR",
-            message: "Upload failed (" + res.status + ")",
-          });
-          // Keep state for retry on next load
-          state.active = false;
-          setState(state);
-        }
-      })
-      .catch(function (err) {
-        console.error("[Stroll] Upload error:", err);
-        notifyWidget({
-          type: "STROLL_ERROR",
-          message: err.message || "Network error",
-        });
-        state.active = false;
-        setState(state);
+  function parseSitemapXml(text) {
+    if (!text) return { sitemaps: [], urls: [] };
+    try {
+      var doc = new DOMParser().parseFromString(text, "text/xml");
+      var sitemaps = Array.from(doc.querySelectorAll("sitemap > loc")).map(function (n) {
+        return n.textContent.trim();
       });
+      var urls = Array.from(doc.querySelectorAll("url > loc")).map(function (n) {
+        return n.textContent.trim();
+      });
+      return { sitemaps: sitemaps, urls: urls };
+    } catch (e) {
+      return { sitemaps: [], urls: [] };
+    }
   }
 
-  // ── Notify widget via postMessage ──────────────────────────────────────────
-  function notifyWidget(data) {
-    window.postMessage(data, "*");
+  function fetchSitemap(url) {
+    return fetchText(url).then(parseSitemapXml);
   }
 
-  // ── Hidden iframe for crawling without leaving the page ──────────────────────
+  function extractRobotsSitemaps(text) {
+    if (!text) return [];
+    return text.split("\n")
+      .map(function (line) {
+        var m = line.match(/^Sitemap:\s*(.+)/i);
+        return m ? m[1].trim() : null;
+      })
+      .filter(Boolean);
+  }
+
+  // Gathers URLs from /sitemap.xml, /sitemap_index.xml, /sitemap-index.xml,
+  // and any sitemaps referenced in /robots.txt. Runs fetches in parallel.
+  function discoverFromSitemap(origin) {
+    var candidates = [
+      origin + "/sitemap.xml",
+      origin + "/sitemap_index.xml",
+      origin + "/sitemap-index.xml",
+    ];
+
+    var initial = Promise.all([
+      Promise.all(candidates.map(fetchSitemap)),
+      fetchText(origin + "/robots.txt").then(extractRobotsSitemaps),
+    ]);
+
+    return initial.then(function (results) {
+      var firstResults = results[0];
+      var robotsSitemaps = results[1];
+
+      var allSitemaps = [];
+      var allUrls = [];
+
+      firstResults.forEach(function (r) {
+        allSitemaps = allSitemaps.concat(r.sitemaps);
+        allUrls = allUrls.concat(r.urls);
+      });
+
+      var toFetch = Array.from(new Set(allSitemaps.concat(robotsSitemaps))).slice(0, MAX_SUB_SITEMAPS);
+
+      return Promise.all(toFetch.map(fetchSitemap)).then(function (subResults) {
+        subResults.forEach(function (r) {
+          allUrls = allUrls.concat(r.urls);
+        });
+        // Normalize and dedupe
+        var seen = new Set();
+        var normalized = [];
+        allUrls.forEach(function (u) {
+          var n = normalizeUrl(u);
+          if (n && !seen.has(n)) {
+            seen.add(n);
+            normalized.push(n);
+          }
+        });
+        return normalized;
+      });
+    });
+  }
+
+  // ── Iframe manager ─────────────────────────────────────────────────────────
   var strollIframe = null;
 
-  function getOrCreateIframe() {
+  function getIframe() {
     if (strollIframe && strollIframe.parentNode) return strollIframe;
     strollIframe = document.createElement("iframe");
-    strollIframe.id = "__swift_stroll_iframe__";
+    strollIframe.id = IFRAME_ID;
+    strollIframe.name = IFRAME_ID;
     strollIframe.style.cssText =
       "position:fixed;top:0;left:0;width:1920px;height:1080px;" +
       "opacity:0;pointer-events:none;z-index:-1;border:none;";
@@ -679,405 +432,334 @@
     strollIframe = null;
   }
 
-  // Load a URL in the iframe and wait for it to settle
+  // Navigates an iframe to a URL and resolves once the page has settled.
+  // Cleans up listeners and the timeout fallback on both success and failure.
   function loadInIframe(url) {
     return new Promise(function (resolve) {
-      var iframe = getOrCreateIframe();
-      var loaded = false;
+      var iframe = getIframe();
+      var settled = false;
+      var timeoutId = null;
+
+      function cleanup() {
+        iframe.removeEventListener("load", onLoad);
+        if (timeoutId) clearTimeout(timeoutId);
+      }
+
+      function finish() {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(iframe);
+      }
 
       function onLoad() {
-        if (loaded) return;
-        loaded = true;
-        iframe.removeEventListener("load", onLoad);
-        // Wait for page to settle (SPA rendering, lazy loads)
-        setTimeout(function () {
-          resolve(iframe);
-        }, SETTLE_DELAY);
+        setTimeout(finish, SETTLE_DELAY_MS);
       }
 
       iframe.addEventListener("load", onLoad);
+      timeoutId = setTimeout(finish, IFRAME_LOAD_TIMEOUT_MS);
       iframe.src = url;
+    });
+  }
 
-      // Timeout fallback if load never fires
-      setTimeout(function () {
-        if (!loaded) {
-          loaded = true;
-          iframe.removeEventListener("load", onLoad);
-          resolve(iframe);
+  // ── Cross-origin-safe iframe accessor ──────────────────────────────────────
+  function iframeWindow(iframe) {
+    try { return iframe.contentWindow || null; } catch (e) { return null; }
+  }
+
+  function iframeDocument(iframe) {
+    try {
+      return iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document) || null;
+    } catch (e) { return null; }
+  }
+
+  // ── Utility ────────────────────────────────────────────────────────────────
+  function delay(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+  }
+
+  function notifyWidget(data) {
+    window.postMessage(data, "*");
+  }
+
+  // ── Crawler ────────────────────────────────────────────────────────────────
+  function createCrawler(companyId, baseUrl) {
+    var visited = new Set();
+    var queue = [];
+    var queueSet = new Set();
+    var nodes = [];
+
+    function enqueue(urls) {
+      urls.forEach(function (url) {
+        if (!visited.has(url) && !queueSet.has(url)) {
+          queueSet.add(url);
+          queue.push(url);
         }
-      }, SETTLE_DELAY + 10000);
-    });
-  }
-
-  // ── Capture from an iframe's document ──────────────────────────────────────
-  function captureIframePage(iframe) {
-    try {
-      var doc = iframe.contentDocument || iframe.contentWindow.document;
-      var win = iframe.contentWindow;
-      if (!doc || !doc.body) return Promise.resolve("");
-      if (!win.html2canvas) {
-        // Inject html2canvas into iframe
-        return new Promise(function (resolve) {
-          var script = doc.createElement("script");
-          script.src = HTML2CANVAS_CDN;
-          script.onload = function () {
-            doCapture(doc, win, resolve);
-          };
-          script.onerror = function () { resolve(""); };
-          doc.head.appendChild(script);
-        });
+      });
+      var cap = MAX_PAGES - visited.size;
+      if (queue.length > cap) {
+        queue.length = Math.max(0, cap);
       }
-      return new Promise(function (resolve) {
-        doCapture(doc, win, resolve);
-      });
-    } catch (e) {
-      // Cross-origin iframe — can't access
-      console.error("[Stroll] Can't access iframe (cross-origin?):", e);
-      return Promise.resolve("");
     }
-  }
 
-  function doCapture(doc, win, resolve) {
-    win.html2canvas(doc.body, {
-      useCORS: true,
-      allowTaint: true,
-      scale: 1,
-      logging: false,
-      ignoreElements: function (el) {
-        return el.id === "swift-agent-widget-root" || el.id === "__swift_stroll_iframe__";
-      },
-      onclone: sanitizeClone,
-    }).then(function (canvas) {
-      resolve(canvasToDataUrl(canvas));
-    }).catch(function (err) {
-      console.error("[Stroll] Iframe screenshot failed:", err);
-      resolve("");
-    });
-  }
-
-  // ── Map elements inside an iframe ──────────────────────────────────────────
-  function mapIframeElements(iframe) {
-    try {
-      var doc = iframe.contentDocument || iframe.contentWindow.document;
-      var win = iframe.contentWindow;
-      if (!doc) return [];
-
-      var selectors =
-        'a, button, input, select, textarea, [role="button"], [role="tab"], [role="link"], [role="menuitem"], [onclick], [tabindex]';
-      var allEls = doc.querySelectorAll(selectors);
-      var elements = [];
-
-      allEls.forEach(function (el) {
-        var rect = el.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) return;
-        var style = win.getComputedStyle(el);
-        if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return;
-
-        var label = "";
-        if (el.innerText) label = el.innerText.trim().substring(0, 100);
-        else if (el.getAttribute("aria-label")) label = el.getAttribute("aria-label");
-        else if (el.getAttribute("title")) label = el.getAttribute("title");
-        else if (el.getAttribute("placeholder")) label = el.getAttribute("placeholder");
-
-        var type = "action";
-        if (el.tagName === "A" || el.getAttribute("role") === "link") type = "nav";
-        else if (el.tagName === "INPUT" || el.tagName === "SELECT" || el.tagName === "TEXTAREA") type = "input";
-
-        elements.push({
-          selector: generateSelector(el),
-          label: label || "",
-          type: type,
-          href: el.getAttribute("href") || "",
-          bbox: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
-        });
+    function progress(pageTitle) {
+      notifyWidget({
+        type: MSG.PROGRESS,
+        captured: visited.size,
+        remaining: queue.length,
+        pageTitle: pageTitle,
       });
-
-      return elements;
-    } catch (e) {
-      return [];
     }
-  }
 
-  // ── Discover links inside an iframe ────────────────────────────────────────
-  function discoverIframeLinks(iframe, visited, queue) {
-    try {
-      var doc = iframe.contentDocument || iframe.contentWindow.document;
-      if (!doc) return [];
-      var links = [];
-      var seen = {};
-      doc.querySelectorAll("a[href]").forEach(function (a) {
-        var href = a.getAttribute("href");
-        if (!href || href.startsWith("#") || href.startsWith("javascript:") || href.startsWith("mailto:") || href.startsWith("tel:")) return;
-        var normalized = normalizeUrl(href);
-        if (!normalized || seen[normalized]) return;
-        if (visited.indexOf(normalized) !== -1 || queue.indexOf(normalized) !== -1) return;
-        seen[normalized] = true;
-        links.push(normalized);
-      });
-      return links;
-    } catch (e) {
-      return [];
-    }
-  }
+    // Captures the host page (full page + sections), then seeds the queue
+    // from sitemap + DOM links.
+    function crawlHostPage() {
+      var url = window.location.href;
+      var normalized = normalizeUrl(url);
+      visited.add(normalized);
 
-  // ── Process the current (host) page first ──────────────────────────────────
-  function processHostPage(state, callback) {
-    var currentUrl = normalizeUrl(window.location.href);
-    state.visited.push(currentUrl);
+      console.log("[Stroll] Host page:", document.title);
 
-    console.log("[Stroll] Processing host page:", document.title);
-
-    var elements = mapInteractiveElements();
-
-    loadHtml2Canvas().then(function () {
-      captureFullPage().then(function (screenshot) {
-        addNode({
-          url: window.location.href,
-          title: document.title,
-          screenshot_base64: screenshot,
-          elements: elements,
-        });
-
-        // Discover links from host page + sitemap
-        fullDiscovery(state).then(function (newLinks) {
-          state.queue = state.queue.concat(newLinks);
-          if (state.queue.length + state.visited.length > MAX_PAGES) {
-            state.queue = state.queue.slice(0, MAX_PAGES - state.visited.length);
-          }
-          setState(state);
-
-          console.log(
-            "[Stroll] Host page captured. " + state.queue.length + " pages queued."
-          );
-
-          notifyWidget({
-            type: "STROLL_PROGRESS",
-            captured: state.visited.length,
-            remaining: state.queue.length,
-            pageTitle: document.title,
+      return ensureHtml2Canvas(window)
+        .then(function () { return captureFullPage(window, document); })
+        .then(function (screenshot) {
+          nodes.push({
+            url: url,
+            title: document.title,
+            screenshot_base64: screenshot,
+            elements: mapElements(document, window),
           });
 
-          callback(state);
+          // Capture sections for the host page too
+          var sections = detectSections(document);
+          return captureSectionNodes(window, sections, url, document.title)
+            .then(function (sectionNodes) {
+              sectionNodes.forEach(function (n) { nodes.push(n); });
+            });
+        })
+        .then(function () {
+          return Promise.all([
+            discoverFromSitemap(window.location.origin),
+            Promise.resolve(discoverLinks(document, visited, queueSet)),
+          ]);
+        })
+        .then(function (results) {
+          enqueue(results[0]);
+          enqueue(results[1]);
+          console.log("[Stroll] Discovered " + queue.length + " pages to crawl");
+          progress(document.title);
         });
-      });
-    });
-  }
-
-  // ── Process a page via iframe ──────────────────────────────────────────────
-  function processIframePage(url, state, callback) {
-    var normalized = normalizeUrl(url);
-    if (state.visited.indexOf(normalized) !== -1) {
-      callback(state);
-      return;
     }
 
-    state.visited.push(normalized);
-    setState(state);
+    // Processes a single URL via the hidden iframe.
+    function crawlIframePage(url) {
+      if (visited.has(url)) return Promise.resolve();
+      visited.add(url);
 
-    console.log(
-      "[Stroll] Loading in iframe (" + state.visited.length + "/" +
-        (state.visited.length + state.queue.length) + "):",
-      url
-    );
-
-    loadInIframe(url).then(function (iframe) {
-      var title = "";
-      try {
-        title = iframe.contentDocument.title || url;
-      } catch (e) {
-        title = url;
-      }
-
-      // Discover more links from this page
-      var newLinks = discoverIframeLinks(iframe, state.visited, state.queue);
-      if (newLinks.length > 0) {
-        state.queue = state.queue.concat(newLinks);
-        if (state.queue.length + state.visited.length > MAX_PAGES) {
-          state.queue = state.queue.slice(0, MAX_PAGES - state.visited.length);
-        }
-      }
-
-      var elements = mapIframeElements(iframe);
-
-      captureIframePage(iframe).then(function (screenshot) {
-        addNode({
-          url: url,
-          title: title,
-          screenshot_base64: screenshot,
-          elements: elements,
-        });
-
-        setState(state);
-
-        notifyWidget({
-          type: "STROLL_PROGRESS",
-          captured: state.visited.length,
-          remaining: state.queue.length,
-          pageTitle: title,
-        });
-
-        console.log(
-          "[Stroll] Captured:", title,
-          "(" + state.visited.length + " done, " + state.queue.length + " queued)"
-        );
-
-        callback(state);
-      });
-    });
-  }
-
-  // ── Crawl loop: process queue one by one via iframe ────────────────────────
-  function crawlNext(state) {
-    if (state.queue.length === 0) {
       console.log(
-        "[Stroll] Crawl complete. " + state.visited.length + " pages captured. Uploading..."
+        "[Stroll] Iframe (" + visited.size + "/" + (visited.size + queue.length) + "):",
+        url
       );
-      destroyIframe();
-      uploadReport(state);
-      return;
-    }
 
-    var nextUrl = state.queue.shift();
-    setState(state);
+      return loadInIframe(url).then(function (iframe) {
+        var win = iframeWindow(iframe);
+        var doc = iframeDocument(iframe);
+        if (!win || !doc) {
+          console.warn("[Stroll] Cross-origin iframe — skipping:", url);
+          return;
+        }
 
-    setTimeout(function () {
-      processIframePage(nextUrl, state, function (updatedState) {
-        crawlNext(updatedState);
+        var title = doc.title || url;
+
+        enqueue(discoverLinks(doc, visited, queueSet));
+
+        return ensureHtml2Canvas(win)
+          .then(function () { return captureFullPage(win, doc); })
+          .then(function (screenshot) {
+            nodes.push({
+              url: url,
+              title: title,
+              screenshot_base64: screenshot,
+              elements: mapElements(doc, win),
+            });
+
+            var sections = detectSections(doc);
+            return captureSectionNodes(win, sections, url, title);
+          })
+          .then(function (sectionNodes) {
+            sectionNodes.forEach(function (n) { nodes.push(n); });
+            progress(title);
+          });
       });
-    }, NAV_DELAY);
-  }
-
-  // ── Main: start or resume crawl ────────────────────────────────────────────
-  function main() {
-    var state = getState();
-    if (!state || !state.active) return;
-
-    // If we have a queue, resume crawling via iframe
-    if (state.queue.length > 0) {
-      console.log("[Stroll] Resuming crawl: " + state.queue.length + " pages remaining");
-      setTimeout(function () {
-        crawlNext(state);
-      }, SETTLE_DELAY);
     }
-  }
 
-  // ── Listen for start commands from widget / cron ─────────────────────────────
-  window.addEventListener("message", function (event) {
-    var data = event.data;
-    if (!data || !data.type) return;
+    // Drains the queue, then resolves with all captured nodes.
+    function drainQueue() {
+      if (queue.length === 0) return Promise.resolve(nodes);
 
-    if (data.type === "STROLL_AUTO_START") {
-      // Already active crawl — let it continue
-      var existing = getState();
-      if (existing && existing.active) return;
+      var nextUrl = queue.shift();
+      queueSet.delete(nextUrl);
 
-      // Check if we already crawled recently (within this session tab)
-      // Unless force:true is set (cron re-trigger)
-      var doneKey = "__swift_stroll_done_" + data.companyId + "__";
-      if (!data.force && sessionStorage.getItem(doneKey)) {
-        console.log("[Stroll] Already mapped this session, skipping.");
-        return;
-      }
+      return delay(NAV_DELAY_MS)
+        .then(function () { return crawlIframePage(nextUrl); })
+        .catch(function (err) {
+          console.error("[Stroll] Page error:", nextUrl, err);
+        })
+        .then(drainQueue);
+    }
 
-      // Clear previous done marker for forced re-crawl
-      if (data.force) {
-        sessionStorage.removeItem(doneKey);
-        clearAll();
-      }
-
-      console.log("[Stroll] Starting crawl" + (data.force ? " (forced)" : "") + "...");
-      var state = initState(data.companyId, data.baseUrl);
-      setState(state);
-
-      // Capture host page first, then crawl remaining pages via iframe
-      setTimeout(function () {
-        processHostPage(state, function (updatedState) {
-          crawlNext(updatedState);
+    return {
+      run: function () {
+        return crawlHostPage().then(drainQueue).then(function () {
+          destroyIframe();
+          return nodes;
         });
-      }, SETTLE_DELAY);
-    }
-  });
-
-  // ── Recurring crawl scheduler ────────────────────────────────────────────────
-  // After a crawl completes, schedule the next one using localStorage
-  // (survives tab close, unlike sessionStorage). On each page load the
-  // engine checks if it's time for a re-crawl.
-
-  function scheduleCron(companyId, baseUrl) {
-    var cronData = {
+      },
       companyId: companyId,
       baseUrl: baseUrl,
-      nextRunAt: Date.now() + RECRAWL_INTERVAL_MS,
     };
-    try {
-      localStorage.setItem(CRON_KEY, JSON.stringify(cronData));
-    } catch (e) { /* storage full or disabled */ }
   }
 
-  function checkCron() {
-    try {
-      var raw = localStorage.getItem(CRON_KEY);
-      if (!raw) return;
-      var cron = JSON.parse(raw);
-      if (!cron.companyId || !cron.nextRunAt) return;
+  // ── Upload ─────────────────────────────────────────────────────────────────
+  function uploadReport(baseUrl, companyId, nodes) {
+    if (nodes.length === 0) {
+      console.log("[Stroll] Nothing to upload.");
+      return Promise.resolve(false);
+    }
 
-      if (Date.now() >= cron.nextRunAt) {
-        // Time for a re-crawl — also trigger the backend
-        console.log("[Stroll] Cron: time for re-crawl");
-
-        // Trigger the backend stroll run
-        fetch(
-          cron.baseUrl + "/api/v1/stroll/" + cron.companyId + "/run",
-          { method: "POST" }
-        ).then(function () {
-          console.log("[Stroll] Backend stroll triggered for", cron.companyId);
-        }).catch(function () {
-          // Not critical — widget crawl still runs
-        });
-
-        // Start a fresh widget-side crawl
-        window.postMessage({
-          type: "STROLL_AUTO_START",
-          companyId: cron.companyId,
-          baseUrl: cron.baseUrl,
-          force: true,
-        }, "*");
-      }
-    } catch (e) { /* ignore */ }
-  }
-
-  // Hook into upload success to schedule next crawl
-  var _originalUploadReport = uploadReport;
-  uploadReport = function (state) {
-    // Schedule next crawl after this one uploads
-    var origNotify = notifyWidget;
-    var scheduled = false;
-    notifyWidget = function (data) {
-      origNotify(data);
-      if (data.type === "STROLL_COMPLETE" && !scheduled) {
-        scheduled = true;
-        scheduleCron(state.companyId, state.baseUrl);
-        console.log(
-          "[Stroll] Next crawl scheduled in " +
-            (RECRAWL_INTERVAL_MS / 60000) +
-            " minutes"
-        );
-      }
+    var url = baseUrl + "/api/v1/public/stroll/" + companyId + "/report";
+    var payload = {
+      dashboard_url: window.location.origin,
+      nodes: nodes,
     };
-    _originalUploadReport(state);
-  };
 
-  // ── Auto-resume on page load ───────────────────────────────────────────────
-  if (document.readyState === "complete") {
-    main();
-    // Check cron after a delay so it doesn't compete with resume
-    setTimeout(checkCron, 5000);
-  } else {
-    window.addEventListener("load", function () {
-      main();
-      setTimeout(checkCron, 5000);
+    notifyWidget({ type: MSG.UPLOADING, count: nodes.length });
+    console.log("[Stroll] Uploading " + nodes.length + " nodes");
+
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(function (res) {
+      if (res.ok || res.status === 202) {
+        console.log("[Stroll] Upload success!");
+        notifyWidget({ type: MSG.COMPLETE, count: nodes.length });
+        return true;
+      }
+      return res.text().then(function (t) {
+        console.error("[Stroll] Upload failed:", res.status, t);
+        notifyWidget({ type: MSG.ERROR, message: "Upload failed (" + res.status + ")" });
+        return false;
+      });
+    }).catch(function (err) {
+      console.error("[Stroll] Upload error:", err);
+      notifyWidget({ type: MSG.ERROR, message: err.message || "Network error" });
+      return false;
     });
   }
 
-  notifyWidget({ type: "STROLL_ENGINE_READY" });
+  // ── Cron scheduling (via localStorage, survives tab close) ─────────────────
+  function scheduleNextCrawl(companyId, baseUrl) {
+    try {
+      localStorage.setItem(CRON_KEY, JSON.stringify({
+        companyId: companyId,
+        baseUrl: baseUrl,
+        nextRunAt: Date.now() + RECRAWL_INTERVAL_MS,
+      }));
+      console.log("[Stroll] Next crawl scheduled in " + (RECRAWL_INTERVAL_MS / 60000) + "min");
+    } catch (e) {}
+  }
+
+  function getCronSchedule() {
+    try {
+      var raw = localStorage.getItem(CRON_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  function isCronDue(cron, companyId) {
+    return cron && cron.companyId === companyId && cron.nextRunAt && Date.now() >= cron.nextRunAt;
+  }
+
+  function triggerBackendStroll(baseUrl, companyId) {
+    return fetch(baseUrl + "/api/v1/stroll/" + companyId + "/run", { method: "POST" })
+      .catch(function () {});
+  }
+
+  // ── Entry point ────────────────────────────────────────────────────────────
+  var activeCrawl = null;
+
+  function startCrawl(companyId, baseUrl) {
+    if (activeCrawl) return;
+
+    console.log("[Stroll] Starting crawl...");
+    var crawler = createCrawler(companyId, baseUrl);
+    activeCrawl = crawler;
+
+    crawler.run()
+      .then(function (nodes) {
+        return uploadReport(baseUrl, companyId, nodes);
+      })
+      .then(function (uploaded) {
+        if (uploaded) {
+          scheduleNextCrawl(companyId, baseUrl);
+        }
+      })
+      .catch(function (err) {
+        console.error("[Stroll] Crawl error:", err);
+      })
+      .then(function () {
+        destroyIframe();
+        activeCrawl = null;
+      });
+  }
+
+  // ── Message listener (from widget / cron) ──────────────────────────────────
+  window.addEventListener("message", function (event) {
+    var data = event.data;
+    if (!data || data.type !== MSG.START) return;
+    if (!data.companyId || !data.baseUrl) return;
+
+    var cron = getCronSchedule();
+    // Skip if scheduled but not yet due (unless forced)
+    if (!data.force && cron && cron.companyId === data.companyId && !isCronDue(cron, data.companyId)) {
+      console.log("[Stroll] Next crawl scheduled for " + new Date(cron.nextRunAt).toISOString());
+      return;
+    }
+
+    if (data.force) {
+      try { localStorage.removeItem(CRON_KEY); } catch (e) {}
+    }
+
+    setTimeout(function () {
+      startCrawl(data.companyId, data.baseUrl);
+    }, SETTLE_DELAY_MS);
+  });
+
+  // ── Cron check on page load ────────────────────────────────────────────────
+  function checkCronOnLoad() {
+    var cron = getCronSchedule();
+    if (!cron) return;
+
+    if (Date.now() >= cron.nextRunAt) {
+      console.log("[Stroll] Cron due — triggering re-crawl");
+      triggerBackendStroll(cron.baseUrl, cron.companyId);
+      notifyWidget({
+        type: MSG.START,
+        companyId: cron.companyId,
+        baseUrl: cron.baseUrl,
+        force: true,
+      });
+    }
+  }
+
+  if (document.readyState === "complete") {
+    setTimeout(checkCronOnLoad, SETTLE_DELAY_MS);
+  } else {
+    window.addEventListener("load", function () {
+      setTimeout(checkCronOnLoad, SETTLE_DELAY_MS);
+    });
+  }
+
+  notifyWidget({ type: MSG.READY });
 })();

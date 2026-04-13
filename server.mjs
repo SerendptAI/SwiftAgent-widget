@@ -17,10 +17,10 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
-import fs from "fs";
 import https from "https";
 import path from "path";
 import { fileURLToPath } from "url";
+import { Readable } from "stream";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -29,6 +29,9 @@ const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_VOICE_ID =
   process.env.ELEVENLABS_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb";
 const API_TARGET_HOST = "api.swiftagents.org";
+
+// Reuse TLS connections across proxy requests
+const proxyAgent = new https.Agent({ keepAlive: true });
 
 if (!ELEVENLABS_API_KEY) {
   console.error("❌  ELEVENLABS_API_KEY is not set in .env");
@@ -130,65 +133,20 @@ app.post("/api/v1/tts", express.json(), async (req, res) => {
       "Cache-Control": "no-cache",
     });
 
-    // Stream the audio response to the client
-    const reader = response.body.getReader();
-    const pump = async () => {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        res.write(value);
-      }
-      res.end();
-    };
-    await pump();
+    // Pipe the web ReadableStream to the Express response with back-pressure.
+    Readable.fromWeb(response.body).pipe(res);
   } catch (err) {
     console.error("TTS error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// --- Stroll report endpoint (large payloads with screenshots) ---
-
-app.post("/api/v1/public/stroll/:companyId/report", express.json({ limit: "50mb" }), async (req, res) => {
-  try {
-    const body = JSON.stringify(req.body);
-    const proxyPath = `/api/v1/public/stroll/${req.params.companyId}/report`;
-
-    const proxyOptions = {
-      hostname: API_TARGET_HOST,
-      port: 443,
-      path: proxyPath,
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(body),
-        host: API_TARGET_HOST,
-        origin: `https://${API_TARGET_HOST}`,
-      },
-    };
-
-    const proxyReq = https.request(proxyOptions, (proxyRes) => {
-      res.writeHead(proxyRes.statusCode, proxyRes.headers);
-      proxyRes.pipe(res);
-    });
-
-    proxyReq.on("error", (err) => {
-      console.error("[STROLL PROXY ERROR]:", err.message);
-      res.status(502).json({ error: "Proxy error", detail: err.message });
-    });
-
-    proxyReq.write(body);
-    proxyReq.end();
-  } catch (err) {
-    console.error("[STROLL ERROR]:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-// --- Proxy all other /api/* to SwiftAgent backend ---
-
+// Stream-pipe all /api/* requests to the backend. Body is streamed without
+// buffering, so large payloads (e.g. stroll reports with screenshots) don't
+// double-allocate.
 app.all("/api/{*splat}", (req, res) => {
-  const proxyOptions = {
+  const proxyReq = https.request({
+    agent: proxyAgent,
     hostname: API_TARGET_HOST,
     port: 443,
     path: req.originalUrl,
@@ -198,9 +156,7 @@ app.all("/api/{*splat}", (req, res) => {
       host: API_TARGET_HOST,
       origin: `https://${API_TARGET_HOST}`,
     },
-  };
-
-  const proxyReq = https.request(proxyOptions, (proxyRes) => {
+  }, (proxyRes) => {
     res.writeHead(proxyRes.statusCode, proxyRes.headers);
     proxyRes.pipe(res);
   });

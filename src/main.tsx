@@ -263,54 +263,59 @@ function App({ companyId }: { companyId: string }) {
   return <WidgetContent companyId={companyId} />;
 }
 
-// --- Public API + Mount logic ---
+const WIDGET_HOST_ID = "swift-agent-widget-root";
+const SCRIPT_SELECTOR = "script[data-company-id]";
+const STROLL_MESSAGE_START = "STROLL_AUTO_START";
+
+type WindowWithWidgetCss = Window & { __SWIFT_WIDGET_CSS__?: string };
+type WindowWithWidget = Window & {
+  SwiftAgentWidget?: {
+    mount: typeof mountWidget;
+    unmount: typeof unmountWidget;
+    readonly isLoaded: boolean;
+  };
+};
 
 let widgetRoot: Root | null = null;
 
-function mountWidget(companyId: string, baseUrl?: string) {
-  // Prevent multiple mounts
-  if (document.getElementById("swift-agent-widget-root")) return;
+function resolveBaseUrl(script: HTMLScriptElement | null): string {
+  const explicit = script?.getAttribute("data-base-url");
+  if (explicit) return explicit.replace(/\/$/, "");
 
-  // Resolve baseUrl
-  let resolvedBase = baseUrl ?? "";
-  if (!resolvedBase) {
-    const script = document.querySelector<HTMLScriptElement>(
-      "script[data-company-id]",
-    );
-    const src = script?.getAttribute("src") ?? "";
-    try {
-      resolvedBase = new URL(src, window.location.href).origin;
-    } catch {
-      resolvedBase = window.location.origin;
-    }
+  const src = script?.getAttribute("src") ?? "";
+  try {
+    return new URL(src, window.location.href).origin;
+  } catch {
+    return window.location.origin;
   }
+}
+
+function mountWidget(companyId: string, baseUrl?: string) {
+  if (document.getElementById(WIDGET_HOST_ID)) return;
+
+  const resolvedBase =
+    baseUrl ??
+    resolveBaseUrl(document.querySelector<HTMLScriptElement>(SCRIPT_SELECTOR));
 
   initApiClients(resolvedBase);
 
-  // Create host element — positioned above all page content
   const host = document.createElement("div");
-  host.id = "swift-agent-widget-root";
-  host.style.position = "fixed";
-  host.style.top = "0";
-  host.style.left = "0";
-  host.style.width = "100%";
-  host.style.zIndex = "2147483647";
-  host.style.pointerEvents = "none";
+  host.id = WIDGET_HOST_ID;
+  // z-index 2147483647 is the 32-bit signed int max — ensures the widget
+  // sits above any page content including sticky nav bars.
+  host.style.cssText =
+    "position:fixed;top:0;left:0;width:100%;z-index:2147483647;pointer-events:none;";
   document.body.appendChild(host);
 
-  // Attach Shadow DOM to isolate styles
   const shadow = host.attachShadow({ mode: "open" });
 
-  // Inject widget CSS into shadow root (stored by vite-plugin-css-injected-by-js)
-  const css = (window as unknown as Record<string, string>)
-    .__SWIFT_WIDGET_CSS__;
+  const css = (window as WindowWithWidgetCss).__SWIFT_WIDGET_CSS__;
   if (css) {
     const style = document.createElement("style");
     style.textContent = css;
     shadow.appendChild(style);
   }
 
-  // Create React mount point inside shadow
   const container = document.createElement("div");
   container.id = "swift-agent-widget-inner";
   shadow.appendChild(container);
@@ -324,57 +329,48 @@ function unmountWidget() {
     widgetRoot.unmount();
     widgetRoot = null;
   }
-  document.getElementById("swift-agent-widget-root")?.remove();
+  document.getElementById(WIDGET_HOST_ID)?.remove();
 }
 
-// Expose global API for framework integrations
-// Usage: window.SwiftAgentWidget.mount("company-id", "https://api.example.com")
-(window as unknown as Record<string, unknown>).SwiftAgentWidget = {
+// window.SwiftAgentWidget.mount("company-id", "https://api.example.com")
+(window as WindowWithWidget).SwiftAgentWidget = {
   mount: mountWidget,
   unmount: unmountWidget,
   get isLoaded() {
-    return !!document.getElementById("swift-agent-widget-root");
+    return !!document.getElementById(WIDGET_HOST_ID);
   },
 };
 
-// Auto-mount from script tag (backward-compatible with plain HTML usage)
-function autoMount() {
-  const script =
-    document.currentScript ??
-    document.querySelector<HTMLScriptElement>("script[data-company-id]");
-
-  const companyId = script?.getAttribute("data-company-id") ?? "";
-  if (!companyId) return; // No data attr = framework will call mount() manually
-
-  const baseUrl = (() => {
-    // Prefer explicit data-base-url attribute over auto-detected origin
-    const explicit = script?.getAttribute("data-base-url");
-    if (explicit) return explicit.replace(/\/$/, "");
-    const src = script?.getAttribute("src") ?? "";
-    try {
-      return new URL(src, window.location.href).origin;
-    } catch {
-      return window.location.origin;
-    }
-  })();
-
-  mountWidget(companyId, baseUrl);
-
-  // Load the Stroll Engine to silently crawl the site
+function loadStrollEngine(companyId: string, baseUrl: string) {
   const strollScript = document.createElement("script");
   strollScript.src = `${baseUrl}/public/stroll-engine.js`;
   strollScript.defer = true;
-  strollScript.onload = function () {
+  strollScript.onload = () => {
     window.postMessage(
-      {
-        type: "STROLL_AUTO_START",
-        companyId: companyId,
-        baseUrl: baseUrl,
-      },
+      { type: STROLL_MESSAGE_START, companyId, baseUrl },
       "*",
     );
   };
   document.head.appendChild(strollScript);
+}
+
+function autoMount() {
+  // Don't auto-mount inside iframes — the stroll crawler loads pages in hidden
+  // iframes, and we don't want the widget recursing inside those.
+  if (window !== window.top) return;
+
+  const script =
+    (document.currentScript as HTMLScriptElement | null) ??
+    document.querySelector<HTMLScriptElement>(SCRIPT_SELECTOR);
+
+  const companyId = script?.getAttribute("data-company-id") ?? "";
+  // No data attr means the host will call mount() manually (framework usage).
+  if (!companyId) return;
+
+  const baseUrl = resolveBaseUrl(script);
+
+  mountWidget(companyId, baseUrl);
+  loadStrollEngine(companyId, baseUrl);
 }
 
 if (document.readyState === "loading") {
