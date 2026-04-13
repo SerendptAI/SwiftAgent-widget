@@ -138,7 +138,7 @@ function WidgetContent({ companyId }: { companyId: string }) {
           </div>
 
           {/* Input */}
-          <div className="shrink-0 border-t border-gray-100 bg-white px-4 py-3">
+          <div className="shrink-0 border border-[#D9D9D9] bg-white px-4 py-3 m-3 rounded-md">
             <ChatInput
               value={chat.chatInput}
               onChange={chat.setChatInput}
