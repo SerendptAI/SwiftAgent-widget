@@ -43,10 +43,16 @@ export const publicApiClient = axios.create({
  * Called once from main.tsx when the widget mounts.
  */
 export function initApiClients(baseUrl: string) {
-  // Env var takes priority over the script-tag base URL
-  if (import.meta.env.VITE_API_BASE_URL) return;
-
   const cleanBase = baseUrl.replace(/\/$/, "");
-  _baseUrl = cleanBase;
-  localApiClient.defaults.baseURL = cleanBase;
+
+  // Env vars take priority over the script-tag base URL for their respective clients
+  if (!import.meta.env.VITE_API_BASE_URL) {
+    _baseUrl = cleanBase;
+    localApiClient.defaults.baseURL = cleanBase;
+  }
+
+  // Voice client always falls back to the widget base URL when no env var is set
+  if (!import.meta.env.VITE_VOICE_API_URL) {
+    voiceApiClient.defaults.baseURL = cleanBase;
+  }
 }

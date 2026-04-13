@@ -29,7 +29,7 @@
   var IFRAME_LOAD_TIMEOUT_MS = 15000;
   var SECTION_CAPTURE_DELAY_MS = 150;
   var SCREENSHOT_QUALITY = 0.7;
-  var RECRAWL_INTERVAL_MS = 60 * 60 * 1000;
+  var RECRAWL_INTERVAL_MS = 5 * 60 * 1000;
   var MIN_SECTION_HEIGHT = 50;
   var MIN_FALLBACK_SECTION_HEIGHT = 150;
 
@@ -163,7 +163,8 @@
   function detectSections(root) {
     var seen = new Set();
     var sections = [];
-    var win = root.ownerDocument.defaultView || window;
+    var doc = root.ownerDocument || root;
+    var win = doc.defaultView || window;
 
     SECTION_TAGS.forEach(function (sel) {
       root.querySelectorAll(sel).forEach(function (el) {
@@ -178,7 +179,7 @@
       });
     });
 
-    var container = root.querySelector("main") || root.ownerDocument.body || root;
+    var container = root.querySelector("main") || doc.body || root;
     Array.from(container.children || []).forEach(function (el) {
       if (el.tagName !== "DIV" && el.tagName !== "SECTION") return;
       if (seen.has(el) || el.closest("#" + WIDGET_ROOT_ID)) return;
@@ -760,6 +761,10 @@
       setTimeout(checkCronOnLoad, SETTLE_DELAY_MS);
     });
   }
+
+  // Re-check the cron schedule periodically so recrawls fire even if the user
+  // stays on the same page without navigating away.
+  setInterval(checkCronOnLoad, RECRAWL_INTERVAL_MS);
 
   notifyWidget({ type: MSG.READY });
 })();
