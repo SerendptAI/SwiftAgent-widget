@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
-import { ChatMsg, NavigationGuide } from "../components/types";
-import { getBaseUrl, getProxyBaseUrl } from "../lib/api-client";
+import { ChatMsg } from "../components/types";
+import { getProxyBaseUrl } from "../lib/api-client";
 
 interface UseWidgetChatOptions {
   companyId: string;
@@ -91,8 +91,6 @@ export function useWidgetChat({
         const decoder = new TextDecoder();
         let agentText = "";
         let buffer = "";
-        let navGuide: NavigationGuide | undefined;
-
         setChatMessages((prev) => [
           ...prev,
           { id: agentMsgId, text: "", sender: "agent", time: "" },
@@ -127,20 +125,6 @@ export function useWidgetChat({
                   setChatThinkingText(label);
                   scrollToBottom();
                 }
-              } else if (stage === "navigation_guide") {
-                setChatThinkingText(null);
-                navGuide = {
-                  steps: parsed?.data?.steps ?? [],
-                  path_summary: parsed?.data?.path_summary ?? [],
-                };
-                setChatMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === agentMsgId
-                      ? { ...m, navigationGuide: navGuide }
-                      : m,
-                  ),
-                );
-                scrollToBottom();
               } else if (stage === "stream" && typeof message === "string") {
                 setChatThinkingText(null);
                 agentText += message;

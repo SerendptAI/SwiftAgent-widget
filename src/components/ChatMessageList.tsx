@@ -1,7 +1,6 @@
 import ReactMarkdown from "react-markdown";
 
 import { cn } from "../lib/cn";
-import { NavigationGuideCard } from "./NavigationGuideCard";
 import { ChatMsg } from "./types";
 
 /** Shared markdown component overrides for agent messages */
@@ -81,19 +80,11 @@ export function ChatMessageList({
             )}
           >
             {msg.sender === "agent" ? (
-              <>
-                {msg.navigationGuide && (
-                  <NavigationGuideCard
-                    guide={msg.navigationGuide}
-                    compact={compact}
-                  />
-                )}
-                {msg.text && (
-                  <ReactMarkdown components={MARKDOWN_COMPONENTS}>
-                    {msg.text}
-                  </ReactMarkdown>
-                )}
-              </>
+              msg.text ? (
+                <ReactMarkdown components={MARKDOWN_COMPONENTS}>
+                  {msg.text}
+                </ReactMarkdown>
+              ) : null
             ) : (
               <p>{msg.text}</p>
             )}

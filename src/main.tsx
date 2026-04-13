@@ -4,15 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import { BriggsFace } from "./components/BriggsFace";
-import { Icons } from "./components/icons";
 import { WidgetTab } from "./components/types";
-import { WidgetBanner } from "./components/WidgetBanner";
+
 import { WidgetCallTab } from "./components/WidgetCallTab";
 import { WidgetChatTab } from "./components/WidgetChatTab";
 import { WidgetHeader } from "./components/WidgetHeader";
 import { WidgetMinimizedChat } from "./components/WidgetMinimizedChat";
 import { WidgetMinimizedControls } from "./components/WidgetMinimizedControls";
-import { useCallTimer } from "./hooks/use-call-timer";
+
 import { usePublicCompanyQuery } from "./hooks/use-public-company";
 import { useVisitorLog } from "./hooks/use-visitor-log";
 import { useVoiceChat } from "./hooks/use-voice-chat";
@@ -108,7 +107,6 @@ function WidgetContent({ companyId }: { companyId: string }) {
   });
 
   const callStatus = isActive ? "ongoing" : "idle";
-  const elapsedTime = useCallTimer(isActive);
 
   useEffect(() => {
     if (!isActive) {
@@ -155,17 +153,10 @@ function WidgetContent({ companyId }: { companyId: string }) {
       )}
     >
       <div className="pointer-events-auto z-[100] w-full">
-        <WidgetBanner
-          companyName={companyName}
-          callStatus={callStatus as "idle" | "ongoing"}
-          elapsedTime={elapsedTime}
-          handleRequestCallClick={handleRequestCallClick}
-        />
-
         {callStatus === "ongoing" && (
           <div
             className={cn(
-              "pointer-events-auto fixed inset-0 z-50 flex items-start justify-center pt-[56px] sm:pt-[76px]",
+              "pointer-events-auto fixed inset-0 z-50 flex items-start justify-center",
               !isMinimized
                 ? "widget-animate-fade-in backdrop-blur-sm"
                 : "pointer-events-none",
@@ -173,7 +164,7 @@ function WidgetContent({ companyId }: { companyId: string }) {
           >
             <div
               className={cn(
-                "widget-container relative h-full max-h-[calc(100vh-56px)] w-full overflow-visible rounded-t-3xl bg-white shadow-2xl sm:h-auto sm:max-h-[calc(100vh-100px)] sm:w-[95%] sm:max-w-[1200px] sm:rounded-4xl",
+                "widget-container relative h-full max-h-screen w-full overflow-visible rounded-t-3xl bg-white shadow-2xl sm:h-auto sm:max-h-[calc(100vh-24px)] sm:w-[95%] sm:max-w-[1200px] sm:rounded-4xl",
                 isMinimized ? "widget-minimized" : "widget-animate-slide-up",
               )}
             >
@@ -280,8 +271,6 @@ function App({ companyId }: { companyId: string }) {
 
 const WIDGET_HOST_ID = "swift-agent-widget-root";
 const SCRIPT_SELECTOR = "script[data-company-id]";
-const STROLL_MESSAGE_START = "STROLL_AUTO_START";
-
 type WindowWithWidgetCss = Window & { __SWIFT_WIDGET_CSS__?: string };
 type WindowWithWidget = Window & {
   SwiftAgentWidget?: {
@@ -356,22 +345,7 @@ function unmountWidget() {
   },
 };
 
-function loadStrollEngine(companyId: string, baseUrl: string) {
-  const strollScript = document.createElement("script");
-  strollScript.src = `${baseUrl}/public/stroll-engine.js`;
-  strollScript.defer = true;
-  strollScript.onload = () => {
-    window.postMessage(
-      { type: STROLL_MESSAGE_START, companyId, baseUrl },
-      "*",
-    );
-  };
-  document.head.appendChild(strollScript);
-}
-
 function autoMount() {
-  // Don't auto-mount inside iframes — the stroll crawler loads pages in hidden
-  // iframes, and we don't want the widget recursing inside those.
   if (window !== window.top) return;
 
   const script =
@@ -379,13 +353,11 @@ function autoMount() {
     document.querySelector<HTMLScriptElement>(SCRIPT_SELECTOR);
 
   const companyId = script?.getAttribute("data-company-id") ?? "";
-  // No data attr means the host will call mount() manually (framework usage).
   if (!companyId) return;
 
   const baseUrl = resolveBaseUrl(script);
 
   mountWidget(companyId, baseUrl);
-  loadStrollEngine(companyId, baseUrl);
 }
 
 if (document.readyState === "loading") {

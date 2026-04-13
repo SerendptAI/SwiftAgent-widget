@@ -65,11 +65,6 @@
   100% { opacity: 1; transform: translateY(0)    scale(1); }
 }
 
-@keyframes widget-marquee {
-  0%   { transform: translateX(100%); }
-  100% { transform: translateX(-100%); }
-}
-
 .widget-animate-fade-in {
   animation: widget-fade-in 0.4s ease-out forwards;
   background-color: rgba(0, 0, 0, 0.65);
@@ -106,12 +101,6 @@
 
 .widget-animate-minimized-chat-in {
   animation: widget-minimized-chat-in 0.35s cubic-bezier(0.32, 0.72, 0, 1) forwards;
-}
-
-.widget-marquee {
-  display: inline-block;
-  white-space: nowrap;
-  animation: widget-marquee 18s linear infinite;
 }
 
 .scrollbar-none { scrollbar-width: none; }
