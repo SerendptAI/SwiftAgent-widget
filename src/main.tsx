@@ -105,19 +105,10 @@ function WidgetContent({ companyId }: { companyId: string }) {
         />
       )}
 
-      {/* Chat panel */}
+      {/* Chat panel — fullscreen on mobile, floating card on desktop */}
       {chatOpen && (
         <div
-          className="pointer-events-auto widget-animate-slide-up flex flex-col bg-white shadow-[0_8px_40px_rgba(0,0,0,0.16)] sm:rounded-2xl overflow-hidden"
-          style={{
-            position: "fixed",
-            bottom: 110,
-            right: 20,
-            width: 380,
-            maxWidth: "calc(100vw - 40px)",
-            height: 500,
-            maxHeight: "calc(100vh - 140px)",
-          }}
+          className="pointer-events-auto widget-animate-slide-up fixed inset-0 flex flex-col bg-white overflow-hidden sm:inset-auto sm:bottom-[110px] sm:right-5 sm:h-[500px] sm:max-h-[calc(100vh-140px)] sm:w-[380px] sm:rounded-2xl sm:shadow-[0_8px_40px_rgba(0,0,0,0.16)]"
         >
           {/* Header */}
           <div className="flex shrink-0 items-center justify-between border-b border-gray-100 bg-white px-4 py-3">
@@ -158,9 +149,12 @@ function WidgetContent({ companyId }: { companyId: string }) {
         </div>
       )}
 
-      {/* Bottom-right launcher area */}
+      {/* Bottom-right launcher area — hidden on mobile when chat is open */}
       <div
-        className="pointer-events-auto fixed z-[100] flex flex-col items-end gap-3"
+        className={cn(
+          "pointer-events-auto fixed z-[100] flex flex-col items-end gap-3",
+          chatOpen && "hidden sm:flex",
+        )}
         style={{ bottom: 30, right: 30 }}
       >
         {/* Rotating prompt bubble */}
