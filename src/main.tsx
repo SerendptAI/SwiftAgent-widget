@@ -1,21 +1,15 @@
 import "./widget.css";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import { BriggsFace } from "./components/BriggsFace";
-import { WidgetTab } from "./components/types";
-
-import { WidgetCallTab } from "./components/WidgetCallTab";
-import { WidgetChatTab } from "./components/WidgetChatTab";
-import { WidgetHeader } from "./components/WidgetHeader";
-import { WidgetMinimizedChat } from "./components/WidgetMinimizedChat";
-import { WidgetMinimizedControls } from "./components/WidgetMinimizedControls";
+import { ChatInput } from "./components/ChatInput";
+import { ChatMessageList } from "./components/ChatMessageList";
 
 import { usePublicCompanyQuery } from "./hooks/use-public-company";
 import { useVisitorLog } from "./hooks/use-visitor-log";
-import { useVoiceChat } from "./hooks/use-voice-chat";
-import { useWidgetAudio } from "./hooks/use-widget-audio";
 import { useWidgetChat } from "./hooks/use-widget-chat";
 import { initApiClients } from "./lib/api-client";
 import { cn } from "./lib/cn";
@@ -26,17 +20,11 @@ function WidgetContent({ companyId }: { companyId: string }) {
   const { data: company } = usePublicCompanyQuery(companyId);
   const companyName = company?.name;
 
-  const { dialingAudioRef, pickupAudioRef, playTouchSound, stopDialingAudio } =
-    useWidgetAudio();
-
   const chat = useWidgetChat({ companyId });
 
   useVisitorLog(companyId);
 
-  const [isMinimized, setIsMinimized] = useState(false);
-  const [statusText, setStatusText] = useState("Idle");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [activeWidgetTab, setActiveWidgetTab] = useState<WidgetTab>("call");
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Rotating prompt bubble — starts hidden, shows questions in bursts with pauses
   const [bubbleIndex, setBubbleIndex] = useState(0);
@@ -51,79 +39,9 @@ function WidgetContent({ companyId }: { companyId: string }) {
     [companyName],
   );
 
-  const hasPlayedPickupRef = useRef(false);
-  const dialingStartTimeRef = useRef(0);
-  const isDialingPhaseRef = useRef(false);
-
-  const handleStatusChange = useCallback(
-    (s: string) => {
-      if (s.toLowerCase() === "ready" && !hasPlayedPickupRef.current) {
-        hasPlayedPickupRef.current = true;
-        isDialingPhaseRef.current = true;
-        setStatusText("Calling");
-        const elapsed = Date.now() - dialingStartTimeRef.current;
-        const remaining = Math.max(0, 4000 - elapsed);
-        setTimeout(() => {
-          isDialingPhaseRef.current = false;
-          stopDialingAudio();
-          const pickupAudio = pickupAudioRef.current;
-          if (pickupAudio) {
-            pickupAudio.onended = () => {
-              speakText("Hello, how can I help you?");
-            };
-            pickupAudio.play().catch(() => {});
-          } else {
-            speakText("Hello, how can I help you?");
-          }
-          setStatusText("Ready");
-        }, remaining);
-      } else if (isDialingPhaseRef.current) {
-        return;
-      } else {
-        setStatusText(s);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [stopDialingAudio, pickupAudioRef],
-  );
-
-  const handleSpeechStart = useCallback(() => {
-    setErrorMessage(null);
-  }, []);
-
-  const handleError = useCallback(
-    (err: Error | string) => {
-      const msg = typeof err === "string" ? err : (err?.message ?? String(err));
-      console.error("Voice Chat Error:", msg);
-      setErrorMessage(msg);
-      stopDialingAudio();
-    },
-    [stopDialingAudio],
-  );
-
-  const {
-    isActive,
-    isMuted,
-    start,
-    stop,
-    toggleMute,
-    speakText,
-    pause,
-    resume,
-  } = useVoiceChat({
-    companyId,
-    onStatusChange: handleStatusChange,
-    onTranscript: useCallback(() => {}, []),
-    onSpeechStart: handleSpeechStart,
-    onReply: useCallback(() => {}, []),
-    onError: handleError,
-  });
-
-  const callStatus = isActive ? "ongoing" : "idle";
-
   // Rotate prompt bubble: hidden initially, then show/hide in cycles with pauses
   useEffect(() => {
-    if (isActive) {
+    if (chatOpen) {
       setBubbleVisible(false);
       return;
     }
@@ -132,32 +50,24 @@ function WidgetContent({ companyId }: { companyId: string }) {
     const wait = (ms: number) =>
       new Promise<void>((r) => {
         const t = setTimeout(r, ms);
-        // clean up on cancel
         if (cancelled) clearTimeout(t);
       });
 
     const run = async () => {
-      // Initial delay — just the Rive face, no bubble
       await wait(3000);
 
       while (!cancelled) {
-        // Show current question
         setBubbleAnimating(false);
         setBubbleVisible(true);
-
-        // Keep it visible
         await wait(4000);
 
-        // Animate out
         setBubbleAnimating(true);
         await wait(300);
         setBubbleVisible(false);
         setBubbleAnimating(false);
 
-        // Pause between questions
         await wait(2500);
 
-        // Advance to next question
         if (!cancelled) {
           setBubbleIndex((i) => (i + 1) % bubbleQuestions.length);
         }
@@ -168,184 +78,110 @@ function WidgetContent({ companyId }: { companyId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [isActive, bubbleQuestions.length]);
+  }, [chatOpen, bubbleQuestions.length]);
 
-  useEffect(() => {
-    if (!isActive) {
-      setErrorMessage(null);
-      setIsMinimized(false);
-    }
-  }, [isActive]);
+  const handleBubbleClick = useCallback(
+    (question: string) => {
+      setChatOpen(true);
+      setBubbleVisible(false);
+      // Small delay so the chat panel opens first
+      setTimeout(() => {
+        chat.sendMessage(question);
+      }, 100);
+    },
+    [chat],
+  );
 
-  useEffect(() => {
-    if (!isActive) return;
-    if (activeWidgetTab === "chat") {
-      pause();
-    } else {
-      resume();
-    }
-  }, [activeWidgetTab, isActive, pause, resume]);
-
-  const handleStartCall = useCallback(() => {
-    setErrorMessage(null);
-    hasPlayedPickupRef.current = false;
-    isDialingPhaseRef.current = false;
-    dialingStartTimeRef.current = Date.now();
-    dialingAudioRef.current?.play().catch(() => {});
-    start();
-  }, [start, dialingAudioRef]);
-
-  const handleEndCall = useCallback(() => {
-    playTouchSound();
-    stopDialingAudio();
-    stop();
-  }, [playTouchSound, stopDialingAudio, stop]);
-
-  const handleRequestCallClick = useCallback(() => {
-    if (callStatus === "idle") {
-      handleStartCall();
-    }
-  }, [callStatus, handleStartCall]);
+  const initial = companyName ? companyName.charAt(0).toUpperCase() : "";
+  const displayName = companyName || "";
 
   return (
-    <div
-      className={cn(
-        "fixed inset-x-0 top-0 flex flex-col items-center justify-start font-sans",
-        isActive ? "pointer-events-none inset-0" : "pointer-events-auto",
-      )}
-    >
-      <div className="pointer-events-auto z-[100] w-full">
-        {callStatus === "ongoing" && (
-          <div
-            className={cn(
-              "pointer-events-auto fixed inset-0 z-50 flex items-start justify-center",
-              !isMinimized
-                ? "widget-animate-fade-in backdrop-blur-sm"
-                : "pointer-events-none",
-            )}
-          >
-            <div
-              className={cn(
-                "widget-container relative h-full max-h-screen w-full overflow-visible rounded-t-3xl bg-white shadow-2xl sm:h-auto sm:max-h-[calc(100vh-24px)] sm:w-[95%] sm:max-w-[1200px] sm:rounded-4xl",
-                isMinimized ? "widget-minimized" : "widget-animate-slide-up",
-              )}
-            >
-              <BriggsFace
-                className="widget-animate-float-in absolute right-4 bottom-24 z-50 cursor-pointer overflow-hidden rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.15)] transition hover:scale-105 sm:top-auto sm:-right-4 sm:-bottom-20"
-                style={{ width: 72, height: 72 }}
-                onClick={() => setIsMinimized(true)}
-              />
-
-              {activeWidgetTab === "call" ? (
-                <>
-                  <WidgetHeader
-                    activeWidgetTab={activeWidgetTab}
-                    setActiveWidgetTab={setActiveWidgetTab}
-                  />
-                  <WidgetCallTab
-                    companyName={companyName}
-                    isMuted={isMuted}
-                    statusText={statusText}
-                    errorMessage={errorMessage}
-                    showHashInput={chat.showHashInput}
-                    setShowHashInput={chat.setShowHashInput}
-                    hashValue={chat.hashValue}
-                    setHashValue={chat.setHashValue}
-                    handleHashSubmit={() => {
-                      chat.handleHashSubmit();
-                      setActiveWidgetTab("chat");
-                    }}
-                    playTouchSound={playTouchSound}
-                    toggleMute={toggleMute}
-                    handleEndCall={handleEndCall}
-                  />
-                </>
-              ) : (
-                <WidgetChatTab
-                  companyName={companyName}
-                  chatMessages={chat.chatMessages}
-                  chatInput={chat.chatInput}
-                  setChatInput={chat.setChatInput}
-                  handleSendChat={chat.handleSendChat}
-                  isChatLoading={chat.isChatLoading}
-                  chatThinkingText={chat.chatThinkingText}
-                  chatEndRef={chat.chatEndRef}
-                  setActiveWidgetTab={setActiveWidgetTab}
-                  setIsMinimized={setIsMinimized}
-                />
-              )}
-            </div>
-          </div>
-        )}
-
-        {callStatus === "ongoing" &&
-          isMinimized &&
-          activeWidgetTab === "call" && (
-            <WidgetMinimizedControls
-              isMuted={isMuted}
-              handleEndCall={handleEndCall}
-              playTouchSound={playTouchSound}
-              toggleMute={toggleMute}
-              setIsMinimized={setIsMinimized}
-            />
-          )}
-
-        {callStatus === "ongoing" &&
-          isMinimized &&
-          activeWidgetTab === "chat" && (
-            <WidgetMinimizedChat
-              companyName={companyName}
-              chatMessages={chat.chatMessages}
-              chatInput={chat.chatInput}
-              setChatInput={chat.setChatInput}
-              handleSendChat={chat.handleSendChat}
-              isChatLoading={chat.isChatLoading}
-              chatThinkingText={chat.chatThinkingText}
-              chatEndRef={chat.chatEndRef}
-              setIsMinimized={setIsMinimized}
-            />
-          )}
-      </div>
-
-      {/* Main Briggs face launcher - always visible in bottom right when idle or minimized */}
-      {(callStatus === "idle" || isMinimized) && (
+    <div className="fixed inset-0 flex flex-col items-end justify-end font-sans pointer-events-none">
+      {/* Chat panel */}
+      {chatOpen && (
         <div
-          className="pointer-events-auto fixed z-[100] flex flex-col items-end gap-3"
-          style={{ bottom: 30, right: 30 }}
+          className="pointer-events-auto widget-animate-slide-up flex flex-col bg-white shadow-[0_8px_40px_rgba(0,0,0,0.16)] sm:rounded-2xl overflow-hidden"
+          style={{
+            position: "fixed",
+            bottom: 110,
+            right: 20,
+            width: 380,
+            maxWidth: "calc(100vw - 40px)",
+            height: 500,
+            maxHeight: "calc(100vh - 140px)",
+          }}
         >
-          {/* Rotating prompt bubble */}
-          {callStatus === "idle" && bubbleVisible && (
-            <div
-              className={cn(
-                "flex items-center gap-2.5 rounded-full bg-white px-5 py-3 shadow-[0_4px_20px_rgba(0,0,0,0.12)]",
-                bubbleAnimating
-                  ? "widget-bubble-exit"
-                  : "widget-animate-bubble",
-              )}
-              key={bubbleIndex}
-            >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-bold text-gray-600">
-                ?
-              </span>
-              <span className="font-dm-mono whitespace-nowrap text-xs font-medium tracking-wide text-black uppercase sm:text-sm">
-                {bubbleQuestions[bubbleIndex]}
+          {/* Header */}
+          <div className="flex shrink-0 items-center justify-between border-b border-gray-100 bg-white px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#6433CC] text-sm font-bold text-white">
+                {initial}
+              </div>
+              <span className="font-dm-mono truncate text-sm font-bold tracking-wide text-gray-800 uppercase">
+                {displayName}
               </span>
             </div>
-          )}
+            <button
+              onClick={() => setChatOpen(false)}
+              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+            >
+              <ChevronDown className="h-5 w-5" />
+            </button>
+          </div>
 
-          <BriggsFace
-            className="cursor-pointer overflow-hidden rounded-full shadow-[0_8px_24px_rgba(0,0,0,0.15)] transition-transform hover:scale-105"
-            style={{ width: 72, height: 72 }}
-            onClick={() => {
-              if (callStatus === "idle") {
-                handleRequestCallClick();
-              } else {
-                setIsMinimized(false);
-              }
-            }}
-          />
+          {/* Messages */}
+          <div className="scrollbar-none flex-1 space-y-4 overflow-y-auto px-4 py-5">
+            <ChatMessageList
+              messages={chat.chatMessages}
+              thinkingText={chat.chatThinkingText}
+              chatEndRef={chat.chatEndRef}
+            />
+          </div>
+
+          {/* Input */}
+          <div className="shrink-0 border-t border-gray-100 bg-white px-4 py-3">
+            <ChatInput
+              value={chat.chatInput}
+              onChange={chat.setChatInput}
+              onSend={chat.handleSendChat}
+              isLoading={chat.isChatLoading}
+            />
+          </div>
         </div>
       )}
+
+      {/* Bottom-right launcher area */}
+      <div
+        className="pointer-events-auto fixed z-[100] flex flex-col items-end gap-3"
+        style={{ bottom: 30, right: 30 }}
+      >
+        {/* Rotating prompt bubble */}
+        {!chatOpen && bubbleVisible && (
+          <button
+            onClick={() => handleBubbleClick(bubbleQuestions[bubbleIndex])}
+            className={cn(
+              "flex cursor-pointer items-center gap-2.5 rounded-full bg-white px-5 py-3 shadow-[0_4px_20px_rgba(0,0,0,0.12)] transition-shadow hover:shadow-[0_4px_24px_rgba(0,0,0,0.18)]",
+              bubbleAnimating
+                ? "widget-bubble-exit"
+                : "widget-animate-bubble",
+            )}
+            key={bubbleIndex}
+          >
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-bold text-gray-600">
+              ?
+            </span>
+            <span className="font-dm-mono whitespace-nowrap text-xs font-medium tracking-wide text-black uppercase sm:text-sm">
+              {bubbleQuestions[bubbleIndex]}
+            </span>
+          </button>
+        )}
+
+        <BriggsFace
+          className="cursor-pointer overflow-hidden rounded-full shadow-[0_8px_24px_rgba(0,0,0,0.15)] transition-transform hover:scale-105"
+          style={{ width: 72, height: 72 }}
+          onClick={() => setChatOpen((o) => !o)}
+        />
+      </div>
     </div>
   );
 }
@@ -392,8 +228,6 @@ function mountWidget(companyId: string, baseUrl?: string) {
 
   const host = document.createElement("div");
   host.id = WIDGET_HOST_ID;
-  // z-index 2147483647 is the 32-bit signed int max — ensures the widget
-  // sits above any page content including sticky nav bars.
   host.style.cssText =
     "position:fixed;top:0;left:0;width:100%;z-index:2147483647;pointer-events:none;";
   document.body.appendChild(host);
@@ -423,7 +257,6 @@ function unmountWidget() {
   document.getElementById(WIDGET_HOST_ID)?.remove();
 }
 
-// window.SwiftAgentWidget.mount("company-id", "https://api.example.com")
 (window as WindowWithWidget).SwiftAgentWidget = {
   mount: mountWidget,
   unmount: unmountWidget,

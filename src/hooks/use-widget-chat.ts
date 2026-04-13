@@ -16,11 +16,6 @@ interface UseWidgetChatReturn {
   chatEndRef: React.RefObject<HTMLDivElement | null>;
   handleSendChat: () => void;
   sendMessage: (text: string) => void;
-  showHashInput: boolean;
-  setShowHashInput: React.Dispatch<React.SetStateAction<boolean>>;
-  hashValue: string;
-  setHashValue: (val: string) => void;
-  handleHashSubmit: () => void;
 }
 
 export function useWidgetChat({
@@ -37,9 +32,6 @@ export function useWidgetChat({
   const [chatInput, setChatInput] = useState("");
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [chatThinkingText, setChatThinkingText] = useState<string | null>(null);
-  const [showHashInput, setShowHashInput] = useState(false);
-  const [hashValue, setHashValue] = useState("");
-
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatSessionId = useMemo(() => crypto.randomUUID(), []);
 
@@ -177,14 +169,6 @@ export function useWidgetChat({
     [companyId, chatSessionId, scrollToBottom],
   );
 
-  const handleHashSubmit = useCallback(() => {
-    if (!hashValue.trim()) return;
-    const text = hashValue.trim();
-    setHashValue("");
-    setShowHashInput(false);
-    sendMessageInternal(text);
-  }, [hashValue, sendMessageInternal]);
-
   const handleSendChat = useCallback(() => {
     sendMessageInternal(chatInputRef.current);
   }, [sendMessageInternal]);
@@ -205,10 +189,5 @@ export function useWidgetChat({
     chatEndRef,
     handleSendChat,
     sendMessage,
-    showHashInput,
-    setShowHashInput,
-    hashValue,
-    setHashValue,
-    handleHashSubmit,
   };
 }
