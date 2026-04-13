@@ -1,7 +1,7 @@
 import { MoreHorizontal } from "lucide-react";
 
-import aiblockSvg from "../../images/aiblock.svg";
 import { cn } from "../lib/cn";
+import { BriggsFace } from "./BriggsFace";
 import { Icons } from "./icons";
 import { getFriendlyStatus } from "./utils";
 
@@ -63,15 +63,9 @@ export function WidgetCallTab({
       )}
 
       <div className="widget-animate-scale-in flex items-center justify-center py-6">
-        <div className="flex h-48 w-48 items-center justify-center rounded-full">
-          <img
-            src={aiblockSvg}
-            alt="AI Avatar"
-            width={192}
-            height={192}
-            className="h-full w-full"
-          />
-        </div>
+        <BriggsFace
+          className="flex h-48 w-48 items-center justify-center overflow-hidden rounded-full"
+        />
       </div>
 
       {showHashInput && (
