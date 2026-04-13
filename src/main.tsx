@@ -1,6 +1,6 @@
 import "./widget.css";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import { BriggsFace } from "./components/BriggsFace";
@@ -37,6 +37,19 @@ function WidgetContent({ companyId }: { companyId: string }) {
   const [statusText, setStatusText] = useState("Idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeWidgetTab, setActiveWidgetTab] = useState<WidgetTab>("call");
+
+  // Rotating prompt bubble — starts hidden, shows questions in bursts with pauses
+  const [bubbleIndex, setBubbleIndex] = useState(0);
+  const [bubbleVisible, setBubbleVisible] = useState(false);
+  const [bubbleAnimating, setBubbleAnimating] = useState(false);
+  const bubbleQuestions = useMemo(
+    () => [
+      `What is ${companyName || "this company"} about`,
+      "Whats the pricing like?",
+      "Are you looking for support?",
+    ],
+    [companyName],
+  );
 
   const hasPlayedPickupRef = useRef(false);
   const dialingStartTimeRef = useRef(0);
@@ -107,6 +120,55 @@ function WidgetContent({ companyId }: { companyId: string }) {
   });
 
   const callStatus = isActive ? "ongoing" : "idle";
+
+  // Rotate prompt bubble: hidden initially, then show/hide in cycles with pauses
+  useEffect(() => {
+    if (isActive) {
+      setBubbleVisible(false);
+      return;
+    }
+
+    let cancelled = false;
+    const wait = (ms: number) =>
+      new Promise<void>((r) => {
+        const t = setTimeout(r, ms);
+        // clean up on cancel
+        if (cancelled) clearTimeout(t);
+      });
+
+    const run = async () => {
+      // Initial delay — just the Rive face, no bubble
+      await wait(3000);
+
+      while (!cancelled) {
+        // Show current question
+        setBubbleAnimating(false);
+        setBubbleVisible(true);
+
+        // Keep it visible
+        await wait(4000);
+
+        // Animate out
+        setBubbleAnimating(true);
+        await wait(300);
+        setBubbleVisible(false);
+        setBubbleAnimating(false);
+
+        // Pause between questions
+        await wait(2500);
+
+        // Advance to next question
+        if (!cancelled) {
+          setBubbleIndex((i) => (i + 1) % bubbleQuestions.length);
+        }
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [isActive, bubbleQuestions.length]);
 
   useEffect(() => {
     if (!isActive) {
@@ -247,17 +309,42 @@ function WidgetContent({ companyId }: { companyId: string }) {
 
       {/* Main Briggs face launcher - always visible in bottom right when idle or minimized */}
       {(callStatus === "idle" || isMinimized) && (
-        <BriggsFace
-          className="pointer-events-auto fixed z-[100] cursor-pointer overflow-hidden rounded-full shadow-[0_8px_24px_rgba(0,0,0,0.15)] transition-transform hover:scale-105"
-          style={{ bottom: 30, right: 30, width: 72, height: 72 }}
-          onClick={() => {
-            if (callStatus === "idle") {
-              handleRequestCallClick();
-            } else {
-              setIsMinimized(false);
-            }
-          }}
-        />
+        <div
+          className="pointer-events-auto fixed z-[100] flex flex-col items-end gap-3"
+          style={{ bottom: 30, right: 30 }}
+        >
+          {/* Rotating prompt bubble */}
+          {callStatus === "idle" && bubbleVisible && (
+            <div
+              className={cn(
+                "flex items-center gap-2.5 rounded-full bg-white px-5 py-3 shadow-[0_4px_20px_rgba(0,0,0,0.12)]",
+                bubbleAnimating
+                  ? "widget-bubble-exit"
+                  : "widget-animate-bubble",
+              )}
+              key={bubbleIndex}
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-bold text-gray-600">
+                ?
+              </span>
+              <span className="font-dm-mono whitespace-nowrap text-xs font-medium tracking-wide text-black uppercase sm:text-sm">
+                {bubbleQuestions[bubbleIndex]}
+              </span>
+            </div>
+          )}
+
+          <BriggsFace
+            className="cursor-pointer overflow-hidden rounded-full shadow-[0_8px_24px_rgba(0,0,0,0.15)] transition-transform hover:scale-105"
+            style={{ width: 72, height: 72 }}
+            onClick={() => {
+              if (callStatus === "idle") {
+                handleRequestCallClick();
+              } else {
+                setIsMinimized(false);
+              }
+            }}
+          />
+        </div>
       )}
     </div>
   );
