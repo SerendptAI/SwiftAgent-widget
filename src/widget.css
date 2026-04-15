@@ -6,7 +6,8 @@
     line-height: 1.5;
     -webkit-text-size-adjust: 100%;
     tab-size: 4;
-    font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
+    font-family:
+      ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
       "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
     font-feature-settings: normal;
     font-variation-settings: normal;
@@ -41,13 +42,25 @@
 /* ── Widget animations ────────────────────────────────────── */
 
 @keyframes widget-bubble-in {
-  0%   { opacity: 0; transform: translateY(8px) scale(0.9); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes widget-bubble-out {
-  0%   { opacity: 1; transform: translateY(0) scale(1); }
-  100% { opacity: 0; transform: translateY(-8px) scale(0.9); }
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.9);
+  }
 }
 
 .widget-animate-bubble {
@@ -59,28 +72,56 @@
 }
 
 @keyframes widget-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes widget-slide-up {
-  from { opacity: 0; transform: translateY(40px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes widget-scale-in {
-  from { opacity: 0; transform: scale(0.8); }
-  to   { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @keyframes widget-float-in {
-  from { opacity: 0; transform: translateY(20px) scale(0.5); }
-  to   { opacity: 1; transform: translateY(0)    scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes widget-minimized-chat-in {
-  0%   { opacity: 0; transform: translateY(40px) scale(0.95); }
-  100% { opacity: 1; transform: translateY(0)    scale(1); }
+  0% {
+    opacity: 0;
+    transform: translateY(40px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .widget-animate-fade-in {
@@ -102,10 +143,22 @@
   opacity: 0;
 }
 
-.widget-animate-control-1 { animation: widget-float-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards; opacity: 0; }
-.widget-animate-control-2 { animation: widget-float-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards; opacity: 0; }
-.widget-animate-control-3 { animation: widget-float-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.7s forwards; opacity: 0; }
-.widget-animate-control-4 { animation: widget-float-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.8s forwards; opacity: 0; }
+.widget-animate-control-1 {
+  animation: widget-float-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
+  opacity: 0;
+}
+.widget-animate-control-2 {
+  animation: widget-float-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards;
+  opacity: 0;
+}
+.widget-animate-control-3 {
+  animation: widget-float-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.7s forwards;
+  opacity: 0;
+}
+.widget-animate-control-4 {
+  animation: widget-float-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.8s forwards;
+  opacity: 0;
+}
 
 .widget-container {
   transition: all 0.5s cubic-bezier(0.32, 0.72, 0, 1);
@@ -118,11 +171,16 @@
 }
 
 .widget-animate-minimized-chat-in {
-  animation: widget-minimized-chat-in 0.35s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+  animation: widget-minimized-chat-in 0.35s cubic-bezier(0.32, 0.72, 0, 1)
+    forwards;
 }
 
-.scrollbar-none { scrollbar-width: none; }
-.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
 
 .font-dm-mono {
   font-family: "DM Mono", "Courier New", monospace;
