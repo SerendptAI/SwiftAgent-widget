@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Widget Test (Cross-Origin)</title>
   <style>
-    body { font-family: sans-serif; padding: 100px 40px; }
+    body { font-family: sans-serif; background-color: green; padding: 100px 40px; }
     h1 { margin-bottom: 20px; }
     p { color: #666; }
   </style>
@@ -17,9 +17,8 @@
 
   <!-- crossorigin="anonymous" ensures proper error reporting and CORS behavior -->
   <script
-    src="http://localhost:3002/dist/widget-ui.js"
+    src="/dist/widget-ui.js"
     data-company-id="01490b45-52bd-4317-b2f7-e93264210201"
-    data-base-url="http://localhost:3002"
     crossorigin="anonymous"
     defer
   ></script>

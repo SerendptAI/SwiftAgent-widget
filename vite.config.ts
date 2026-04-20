@@ -15,6 +15,7 @@ export default defineConfig({
       },
     }),
   ],
+  assetsInclude: ["**/*.riv"],
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
     "process.env": JSON.stringify({}),
