@@ -1,0 +1,16 @@
+name: Deploy Widget
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-widget:
+    name: Deploy Widget
+    runs-on: self-hosted
+
+    steps:
+      - name: Deploy Widget
+        run: ./deploy.sh widget
+        working-directory: /home/ghrunner/swift-agents-prod
