@@ -26,6 +26,16 @@ function WidgetContent({ companyId }: { companyId: string }) {
 
   const [chatOpen, setChatOpen] = useState(false);
 
+  // Close chat on Escape key (accessibility: keyboard alternative to clicking backdrop)
+  useEffect(() => {
+    if (!chatOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setChatOpen(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [chatOpen]);
+
   // Rotating prompt bubble — starts hidden, shows questions in bursts with pauses
   const [bubbleIndex, setBubbleIndex] = useState(0);
   const [bubbleVisible, setBubbleVisible] = useState(false);
@@ -100,6 +110,7 @@ function WidgetContent({ companyId }: { companyId: string }) {
       {/* Backdrop */}
       {chatOpen && (
         <div
+          role="presentation"
           className="pointer-events-auto widget-animate-fade-in fixed inset-0 bg-black/40"
           onClick={() => setChatOpen(false)}
         />
@@ -108,14 +119,22 @@ function WidgetContent({ companyId }: { companyId: string }) {
       {/* Chat panel — fullscreen on mobile, floating card on desktop */}
       {chatOpen && (
         <div
-          className="pointer-events-auto widget-animate-slide-up fixed inset-0 flex flex-col bg-white overflow-hidden sm:inset-auto sm:bottom-[110px] sm:right-5 sm:h-[500px] sm:max-h-[calc(100vh-140px)] sm:w-[380px] sm:rounded-2xl sm:shadow-[0_8px_40px_rgba(0,0,0,0.16)]"
+          className="pointer-events-auto widget-animate-slide-up fixed inset-0 flex flex-col bg-white overflow-hidden sm:inset-auto sm:bottom-[110px] sm:right-5 sm:h-[500px] sm:max-h-[calc(100vh-140px)] sm:w-[380px] sm:shadow-[0_8px_40px_rgba(0,0,0,0.16)]"
         >
           {/* Header */}
           <div className="flex shrink-0 items-center justify-between border-b border-gray-100 bg-white px-4 py-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#6433CC] text-sm font-bold text-white">
-                {initial}
-              </div>
+              {company?.logo_url ? (
+                <img
+                  src={company.logo_url}
+                  alt={displayName}
+                  className="h-8 w-8 shrink-0 object-cover"
+                />
+              ) : (
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#6433CC] text-sm font-bold text-white">
+                  {initial}
+                </div>
+              )}
               <span className="font-dm-mono truncate text-sm font-bold tracking-wide text-gray-800 uppercase">
                 {displayName}
               </span>
