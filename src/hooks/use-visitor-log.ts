@@ -36,10 +36,10 @@ export function useVisitorLog(companyId: string) {
           "https://api.ipify.org?format=json",
         );
         if (ipData.ip) {
-          await localApiClient.post("/api/v1/visitors", {
-            company_id: companyId,
-            ip_address: ipData.ip,
-          });
+          await localApiClient.post(
+            `/api/v1/dashboard/${encodeURIComponent(companyId)}/visitors/log`,
+            { ip_address: ipData.ip },
+          );
           try {
             sessionStorage.setItem(`swift_agent_visited_${companyId}`, "true");
           } catch {
