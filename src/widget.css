@@ -1,8 +1,20 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Stolzl";
+  src: url("./assets/fonts/stolzl/Stolzl-Book.ttf") format("truetype");
+  font-weight: 350;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-stolzl: "Stolzl", ui-sans-serif, system-ui, sans-serif;
+}
+
 /* Scope Tailwind's preflight reset to only the widget root */
-@layer sw-base {
-  #swift-agent-widget-root {
+@layer base {
+  :where(#swift-agent-widget-inner) {
     line-height: 1.5;
     -webkit-text-size-adjust: 100%;
     tab-size: 4;
@@ -13,9 +25,12 @@
     font-variation-settings: normal;
   }
 
-  #swift-agent-widget-root *,
-  #swift-agent-widget-root *::before,
-  #swift-agent-widget-root *::after {
+  :where(
+      #swift-agent-widget-inner,
+      #swift-agent-widget-inner *,
+      #swift-agent-widget-inner *::before,
+      #swift-agent-widget-inner *::after
+    ) {
     box-sizing: border-box;
     border-width: 0;
     border-style: solid;
@@ -24,16 +39,20 @@
     padding: 0;
   }
 
-  #swift-agent-widget-root img,
-  #swift-agent-widget-root svg,
-  #swift-agent-widget-root video {
+  :where(
+      #swift-agent-widget-inner img,
+      #swift-agent-widget-inner svg,
+      #swift-agent-widget-inner video
+    ) {
     display: block;
     max-width: 100%;
   }
 
-  #swift-agent-widget-root button,
-  #swift-agent-widget-root input,
-  #swift-agent-widget-root textarea {
+  :where(
+      #swift-agent-widget-inner button,
+      #swift-agent-widget-inner input,
+      #swift-agent-widget-inner textarea
+    ) {
     font: inherit;
     color: inherit;
   }
@@ -126,7 +145,6 @@
 
 .widget-animate-fade-in {
   animation: widget-fade-in 0.4s ease-out forwards;
-  background-color: rgba(0, 0, 0, 0.65);
 }
 
 .widget-animate-slide-up {
@@ -184,4 +202,34 @@
 
 .font-dm-mono {
   font-family: "DM Mono", "Courier New", monospace;
+}
+
+.font-stolzl {
+  font-family: "Stolzl", ui-sans-serif, system-ui, sans-serif;
+}
+
+.border {
+  border-style: solid;
+  border-width: 1px;
+}
+
+.border-b {
+  border-bottom-style: solid;
+  border-bottom-width: 1px;
+}
+
+.border-gray-100 {
+  border-color: var(--color-gray-100);
+}
+
+.border-gray-200 {
+  border-color: var(--color-gray-200);
+}
+
+.border-red-600 {
+  border-color: var(--color-red-600);
+}
+
+.border-\[\#D9D9D9\] {
+  border-color: #d9d9d9;
 }

@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ChatMsg } from "../components/types";
+import { type ChatAttachment, type ChatMsg } from "../components/types";
 import { getBaseUrl } from "../lib/api-client";
 
 interface UseWidgetChatOptions {
@@ -11,6 +11,9 @@ interface UseWidgetChatReturn {
   chatMessages: ChatMsg[];
   chatInput: string;
   setChatInput: (val: string) => void;
+  selectedFiles: ChatAttachment[];
+  addSelectedFiles: (files: FileList | File[]) => void;
+  removeSelectedFile: (id: string) => void;
   isChatLoading: boolean;
   chatThinkingText: string | null;
   chatEndRef: React.RefObject<HTMLDivElement | null>;
@@ -30,6 +33,7 @@ export function useWidgetChat({
     },
   ]);
   const [chatInput, setChatInput] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<ChatAttachment[]>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [chatThinkingText, setChatThinkingText] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -37,22 +41,86 @@ export function useWidgetChat({
 
   const chatInputRef = useRef(chatInput);
   chatInputRef.current = chatInput;
+  const selectedFilesRef = useRef(selectedFiles);
+  selectedFilesRef.current = selectedFiles;
+  const attachmentUrlsRef = useRef(new Set<string>());
   const isChatLoadingRef = useRef(isChatLoading);
   isChatLoadingRef.current = isChatLoading;
+
+  useEffect(() => {
+    return () => {
+      attachmentUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      attachmentUrlsRef.current.clear();
+    };
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
+  const addSelectedFiles = useCallback((files: FileList | File[]) => {
+    const nextFiles = Array.from(files)
+      .filter((file) => {
+        const name = file.name.toLowerCase();
+        const isPdf = file.type === "application/pdf" || name.endsWith(".pdf");
+        const isSvg = file.type === "image/svg+xml" || name.endsWith(".svg");
+        const isImage = file.type.startsWith("image/") && !isSvg;
+
+        return isPdf || isImage;
+      })
+      .map((file) => {
+        const url = URL.createObjectURL(file);
+        attachmentUrlsRef.current.add(url);
+
+        return {
+          id: `${Date.now()}-${crypto.randomUUID()}`,
+          name: file.name,
+          mimeType: file.type,
+          size: file.size,
+          url,
+          kind:
+            file.type === "application/pdf" ||
+            file.name.toLowerCase().endsWith(".pdf")
+              ? "pdf"
+              : "image",
+        } satisfies ChatAttachment;
+      });
+
+    if (nextFiles.length) {
+      setSelectedFiles((current) => [...current, ...nextFiles]);
+    }
+  }, []);
+
+  const removeSelectedFile = useCallback((id: string) => {
+    setSelectedFiles((current) => {
+      const fileToRemove = current.find((file) => file.id === id);
+      if (fileToRemove) {
+        URL.revokeObjectURL(fileToRemove.url);
+        attachmentUrlsRef.current.delete(fileToRemove.url);
+      }
+
+      return current.filter((file) => file.id !== id);
+    });
+  }, []);
+
   const sendMessageInternal = useCallback(
-    async (userText: string) => {
-      if (!userText.trim() || isChatLoadingRef.current) return;
+    async (userText: string, attachments: ChatAttachment[] = []) => {
+      if (
+        (!userText.trim() && attachments.length === 0) ||
+        isChatLoadingRef.current
+      ) {
+        return;
+      }
 
       const text = userText.trim();
+      const backendText =
+        text ||
+        `Uploaded ${attachments.length} file${attachments.length === 1 ? "" : "s"}.`;
       const userMsg: ChatMsg = {
         id: Date.now(),
         text,
         sender: "user",
+        attachments,
         time: new Date().toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit",
@@ -60,6 +128,7 @@ export function useWidgetChat({
       };
       setChatMessages((prev) => [...prev, userMsg]);
       setChatInput("");
+      setSelectedFiles([]);
       setIsChatLoading(true);
       setTimeout(scrollToBottom, 50);
 
@@ -71,7 +140,7 @@ export function useWidgetChat({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             session_id: chatSessionId,
-            message: text,
+            message: backendText,
           }),
         });
 
@@ -170,7 +239,7 @@ export function useWidgetChat({
   );
 
   const handleSendChat = useCallback(() => {
-    sendMessageInternal(chatInputRef.current);
+    sendMessageInternal(chatInputRef.current, selectedFilesRef.current);
   }, [sendMessageInternal]);
 
   const sendMessage = useCallback(
@@ -184,6 +253,9 @@ export function useWidgetChat({
     chatMessages,
     chatInput,
     setChatInput,
+    selectedFiles,
+    addSelectedFiles,
+    removeSelectedFile,
     isChatLoading,
     chatThinkingText,
     chatEndRef,

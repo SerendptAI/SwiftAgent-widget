@@ -1,3 +1,10 @@
 node_modules/
 dist/
 .env
+
+TODO.md
+TASK.md
+.codex
+
+bun.lock
+AGENTS.md
