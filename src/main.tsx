@@ -1,7 +1,14 @@
 import "./widget.css";
 
 import { ChevronDown } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import { BriggsFace } from "./components/BriggsFace";
@@ -16,7 +23,15 @@ import { cn } from "./lib/cn";
 
 // --- Main Widget Component ---
 
-function WidgetContent({ companyId }: { companyId: string }) {
+export type WidgetMode = "widget" | "button";
+
+function WidgetContent({
+  companyId,
+  mode,
+}: {
+  companyId: string;
+  mode: WidgetMode;
+}) {
   const { data: company } = usePublicCompanyQuery(companyId);
   const companyName = company?.name;
 
@@ -25,6 +40,15 @@ function WidgetContent({ companyId }: { companyId: string }) {
   useVisitorLog(companyId);
 
   const [chatOpen, setChatOpen] = useState(false);
+
+  // Expose chat-open control to the module-level API so host pages can
+  // trigger the chat from any element via SwiftAgentWidget.open/close/toggle.
+  useEffect(() => {
+    chatOpenSetterRef = setChatOpen;
+    return () => {
+      chatOpenSetterRef = null;
+    };
+  }, []);
 
   // Close chat on Escape key (accessibility: keyboard alternative to clicking backdrop)
   useEffect(() => {
@@ -171,49 +195,52 @@ function WidgetContent({ companyId }: { companyId: string }) {
         </div>
       )}
 
-      {/* Bottom-right launcher area — hidden on mobile when chat is open */}
-      <div
-        className={cn(
-          "pointer-events-auto fixed z-[100] flex flex-col items-end gap-3",
-          chatOpen && "hidden sm:flex",
-        )}
-        style={{ bottom: 30, right: 30 }}
-      >
-        {/* Rotating prompt bubble */}
-        {!chatOpen && bubbleVisible && (
-          <button
-            onClick={() => handleBubbleClick(bubbleQuestions[bubbleIndex])}
-            className={cn(
-              "flex cursor-pointer items-center gap-2.5 rounded-full bg-white px-5 py-3 shadow-[0_4px_20px_rgba(0,0,0,0.12)] transition-shadow hover:shadow-[0_4px_24px_rgba(0,0,0,0.18)]",
-              bubbleAnimating
-                ? "widget-bubble-exit"
-                : "widget-animate-bubble",
-            )}
-            key={bubbleIndex}
-          >
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-bold text-gray-600">
-              ?
-            </span>
-            <span className="font-dm-mono whitespace-nowrap text-xs font-medium tracking-wide text-black uppercase sm:text-sm">
-              {bubbleQuestions[bubbleIndex]}
-            </span>
-          </button>
-        )}
+      {/* Bottom-right launcher — only rendered in widget mode.
+          In button mode the host page provides its own trigger. */}
+      {mode === "widget" && (
+        <div
+          className={cn(
+            "pointer-events-auto fixed z-[100] flex flex-col items-end gap-3",
+            chatOpen && "hidden sm:flex",
+          )}
+          style={{ bottom: 30, right: 30 }}
+        >
+          {/* Rotating prompt bubble */}
+          {!chatOpen && bubbleVisible && (
+            <button
+              onClick={() => handleBubbleClick(bubbleQuestions[bubbleIndex])}
+              className={cn(
+                "flex cursor-pointer items-center gap-2.5 rounded-full bg-white px-5 py-3 shadow-[0_4px_20px_rgba(0,0,0,0.12)] transition-shadow hover:shadow-[0_4px_24px_rgba(0,0,0,0.18)]",
+                bubbleAnimating
+                  ? "widget-bubble-exit"
+                  : "widget-animate-bubble",
+              )}
+              key={bubbleIndex}
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-bold text-gray-600">
+                ?
+              </span>
+              <span className="font-dm-mono whitespace-nowrap text-xs font-medium tracking-wide text-black uppercase sm:text-sm">
+                {bubbleQuestions[bubbleIndex]}
+              </span>
+            </button>
+          )}
 
-        <BriggsFace
-          className="cursor-pointer overflow-hidden rounded-full transition-transform hover:scale-105"
-          style={{ width: 72, height: 72 }}
-          onClick={() => setChatOpen((o) => !o)}
-        />
-      </div>
+          <BriggsFace
+            className="cursor-pointer overflow-hidden rounded-full transition-transform hover:scale-105"
+            style={{ width: 72, height: 72 }}
+            onClick={() => setChatOpen((o) => !o)}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
 // --- App wrapper ---
 
-function App({ companyId }: { companyId: string }) {
-  return <WidgetContent companyId={companyId} />;
+function App({ companyId, mode }: { companyId: string; mode: WidgetMode }) {
+  return <WidgetContent companyId={companyId} mode={mode} />;
 }
 
 const WIDGET_HOST_ID = "swift-agent-widget-root";
@@ -224,11 +251,48 @@ type WindowWithWidget = Window & {
   SwiftAgentWidget?: {
     mount: typeof mountWidget;
     unmount: typeof unmountWidget;
+    open: () => void;
+    close: () => void;
+    toggle: () => void;
     readonly isLoaded: boolean;
   };
 };
 
+interface MountOptions {
+  baseUrl?: string;
+  mode?: WidgetMode;
+  trigger?: string;
+}
+
 let widgetRoot: Root | null = null;
+let chatOpenSetterRef: Dispatch<SetStateAction<boolean>> | null = null;
+let triggerCleanup: (() => void) | null = null;
+
+function openChat() {
+  chatOpenSetterRef?.(true);
+}
+
+function closeChat() {
+  chatOpenSetterRef?.(false);
+}
+
+function toggleChat() {
+  chatOpenSetterRef?.((current) => !current);
+}
+
+// Delegated click listener so triggers added later (SPA-rendered buttons)
+// still work without re-binding.
+function bindTrigger(selector: string) {
+  const handler = (event: Event) => {
+    const target = event.target as Element | null;
+    if (target?.closest(selector)) {
+      event.preventDefault();
+      openChat();
+    }
+  };
+  document.addEventListener("click", handler);
+  triggerCleanup = () => document.removeEventListener("click", handler);
+}
 
 function registerWidgetFonts(css: string) {
   if (document.getElementById(WIDGET_FONT_STYLE_ID)) return;
@@ -254,8 +318,10 @@ function resolveBaseUrl(script: HTMLScriptElement | null): string {
   }
 }
 
-function mountWidget(companyId: string, baseUrl?: string) {
+function mountWidget(companyId: string, options: MountOptions = {}) {
   if (document.getElementById(WIDGET_HOST_ID)) return;
+
+  const { baseUrl, mode = "widget", trigger } = options;
 
   const resolvedBase =
     baseUrl ??
@@ -285,10 +351,15 @@ function mountWidget(companyId: string, baseUrl?: string) {
   shadow.appendChild(container);
 
   widgetRoot = createRoot(container);
-  widgetRoot.render(<App companyId={companyId} />);
+  widgetRoot.render(<App companyId={companyId} mode={mode} />);
+
+  if (trigger) bindTrigger(trigger);
 }
 
 function unmountWidget() {
+  triggerCleanup?.();
+  triggerCleanup = null;
+
   if (widgetRoot) {
     widgetRoot.unmount();
     widgetRoot = null;
@@ -300,6 +371,9 @@ function unmountWidget() {
 (window as WindowWithWidget).SwiftAgentWidget = {
   mount: mountWidget,
   unmount: unmountWidget,
+  open: openChat,
+  close: closeChat,
+  toggle: toggleChat,
   get isLoaded() {
     return !!document.getElementById(WIDGET_HOST_ID);
   },
@@ -316,8 +390,11 @@ function autoMount() {
   if (!companyId) return;
 
   const baseUrl = resolveBaseUrl(script);
+  const mode: WidgetMode =
+    script?.getAttribute("data-mode") === "button" ? "button" : "widget";
+  const trigger = script?.getAttribute("data-trigger") ?? undefined;
 
-  mountWidget(companyId, baseUrl);
+  mountWidget(companyId, { baseUrl, mode, trigger });
 }
 
 if (document.readyState === "loading") {
