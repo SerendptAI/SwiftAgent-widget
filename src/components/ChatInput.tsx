@@ -66,7 +66,7 @@ export function ChatInput({
                   className="h-full w-full rounded object-cover"
                 />
               ) : (
-                <span className="flex h-full w-full items-center justify-center rounded bg-[#E93333] font-stolzl text-xs font-bold text-white">
+                <span className="flex h-full w-full items-center justify-center rounded bg-[#E93333] font-sans text-xs font-bold text-white">
                   {fileLabel(file)}
                 </span>
               )}
@@ -91,7 +91,7 @@ export function ChatInput({
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && onSend()}
           placeholder="Ask a question"
-          className="w-full bg-transparent font-stolzl text-base text-gray-800 outline-none placeholder-gray-400 sm:text-sm"
+          className="w-full bg-transparent font-sans text-base text-gray-800 outline-none placeholder-gray-400 sm:text-sm"
         />
       </div>
 

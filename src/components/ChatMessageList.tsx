@@ -64,7 +64,7 @@ export function ChatMessageList({
           {msg.sender === "agent" ? (
             <div
               className={cn(
-                "font-stolzl max-w-[90%] rounded-[24px] bg-[#F2F8FF] px-4 py-2.5 text-[#006BE5]",
+                "font-sans max-w-[90%] rounded-[24px] bg-[#F2F8FF] px-4 py-2.5 text-[#006BE5]",
                 compact
                   ? "text-[13px] leading-relaxed"
                   : "text-[14px] leading-relaxed",
@@ -80,7 +80,7 @@ export function ChatMessageList({
             /* User message */
             <div
               className={cn(
-                "font-stolzl flex max-w-[90%] flex-col items-end text-black tracking-wide",
+                "font-sans flex max-w-[90%] flex-col items-end text-black tracking-wide",
                 compact ? "text-[12px]" : "text-[13px]",
               )}
             >
