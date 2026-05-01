@@ -128,14 +128,14 @@ function WidgetContent({ companyId }: { companyId: string }) {
                 <img
                   src={company.logo_url}
                   alt={displayName}
-                  className="h-8 w-8 shrink-0 object-cover"
+                  className="h-8.5 w-8.5 shrink-0 object-cover"
                 />
               ) : (
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#6433CC] text-sm font-bold text-white">
+                <div className="flex h-8.5 w-8.5 shrink-0 items-center justify-center bg-[#6433CC] text-sm font-bold text-white">
                   {initial}
                 </div>
               )}
-              <span className="font-dm-mono truncate text-sm font-bold tracking-wide text-gray-800 uppercase">
+              <span className="font-dm-mono truncate md:text-base text-sm font-normal tracking-wide text-gray-800 uppercase">
                 {displayName}
               </span>
             </div>
@@ -148,7 +148,7 @@ function WidgetContent({ companyId }: { companyId: string }) {
           </div>
 
           {/* Messages */}
-          <div className="scrollbar-none flex-1 space-y-4 overflow-y-auto px-4 py-5">
+          <div className="scrollbar-none relative flex-1 overflow-y-auto px-4 py-5">
             <ChatMessageList
               messages={chat.chatMessages}
               thinkingText={chat.chatThinkingText}
@@ -157,11 +157,14 @@ function WidgetContent({ companyId }: { companyId: string }) {
           </div>
 
           {/* Input */}
-          <div className="shrink-0 border border-[#D9D9D9] bg-white px-4 py-3 m-3 rounded-md">
+          <div className="shrink-0 border border-[#D9D9D9] bg-white px-4 py-3 mx-3 mb-3 rounded-md">
             <ChatInput
               value={chat.chatInput}
               onChange={chat.setChatInput}
               onSend={chat.handleSendChat}
+              selectedFiles={chat.selectedFiles}
+              onFilesSelected={chat.addSelectedFiles}
+              onRemoveSelectedFile={chat.removeSelectedFile}
               isLoading={chat.isChatLoading}
             />
           </div>
@@ -198,7 +201,7 @@ function WidgetContent({ companyId }: { companyId: string }) {
         )}
 
         <BriggsFace
-          className="cursor-pointer overflow-hidden rounded-full shadow-[0_8px_24px_rgba(0,0,0,0.15)] transition-transform hover:scale-105"
+          className="cursor-pointer overflow-hidden rounded-full transition-transform hover:scale-105"
           style={{ width: 72, height: 72 }}
           onClick={() => setChatOpen((o) => !o)}
         />
@@ -214,6 +217,7 @@ function App({ companyId }: { companyId: string }) {
 }
 
 const WIDGET_HOST_ID = "swift-agent-widget-root";
+const WIDGET_FONT_STYLE_ID = "swift-agent-widget-fonts";
 const SCRIPT_SELECTOR = "script[data-company-id]";
 type WindowWithWidgetCss = Window & { __SWIFT_WIDGET_CSS__?: string };
 type WindowWithWidget = Window & {
@@ -225,6 +229,18 @@ type WindowWithWidget = Window & {
 };
 
 let widgetRoot: Root | null = null;
+
+function registerWidgetFonts(css: string) {
+  if (document.getElementById(WIDGET_FONT_STYLE_ID)) return;
+
+  const fontFaceCss = css.match(/@font-face\s*{[^}]*}/g)?.join("\n");
+  if (!fontFaceCss) return;
+
+  const style = document.createElement("style");
+  style.id = WIDGET_FONT_STYLE_ID;
+  style.textContent = fontFaceCss;
+  document.head.appendChild(style);
+}
 
 function resolveBaseUrl(script: HTMLScriptElement | null): string {
   const explicit = script?.getAttribute("data-base-url");
@@ -257,6 +273,8 @@ function mountWidget(companyId: string, baseUrl?: string) {
 
   const css = (window as WindowWithWidgetCss).__SWIFT_WIDGET_CSS__;
   if (css) {
+    registerWidgetFonts(css);
+
     const style = document.createElement("style");
     style.textContent = css;
     shadow.appendChild(style);
@@ -276,6 +294,7 @@ function unmountWidget() {
     widgetRoot = null;
   }
   document.getElementById(WIDGET_HOST_ID)?.remove();
+  document.getElementById(WIDGET_FONT_STYLE_ID)?.remove();
 }
 
 (window as WindowWithWidget).SwiftAgentWidget = {
