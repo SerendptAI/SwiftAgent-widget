@@ -200,9 +200,9 @@ function WidgetContent({
             </div>
             <button
               onClick={() => setChatOpen(false)}
-              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+              className="h-fit w-fit cursor-pointer text-[#1F1F1F]"
             >
-              <ChevronDown className="h-5 w-5" />
+              <ChevronDown className="size-8 stroke-[1.5]" />
             </button>
           </div>
 
