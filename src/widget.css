@@ -8,8 +8,33 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: "DM Mono";
+  src: url("./assets/fonts/dm-mono/DMMono-Light.ttf") format("truetype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  src: url("./assets/fonts/dm-mono/DMMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DM Mono";
+  src: url("./assets/fonts/dm-mono/DMMono-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme {
-  --font-stolzl: "Stolzl", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Stolzl", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "DM Mono", ui-sans-serif, system-ui, sans-serif;
 }
 
 /* Scope Tailwind's preflight reset to only the widget root */
@@ -19,18 +44,18 @@
     -webkit-text-size-adjust: 100%;
     tab-size: 4;
     font-family:
-      ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
+      "Stolzl", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
       "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
     font-feature-settings: normal;
     font-variation-settings: normal;
   }
 
   :where(
-      #swift-agent-widget-inner,
-      #swift-agent-widget-inner *,
-      #swift-agent-widget-inner *::before,
-      #swift-agent-widget-inner *::after
-    ) {
+    #swift-agent-widget-inner,
+    #swift-agent-widget-inner *,
+    #swift-agent-widget-inner *::before,
+    #swift-agent-widget-inner *::after
+  ) {
     box-sizing: border-box;
     border-width: 0;
     border-style: solid;
@@ -40,19 +65,19 @@
   }
 
   :where(
-      #swift-agent-widget-inner img,
-      #swift-agent-widget-inner svg,
-      #swift-agent-widget-inner video
-    ) {
+    #swift-agent-widget-inner img,
+    #swift-agent-widget-inner svg,
+    #swift-agent-widget-inner video
+  ) {
     display: block;
     max-width: 100%;
   }
 
   :where(
-      #swift-agent-widget-inner button,
-      #swift-agent-widget-inner input,
-      #swift-agent-widget-inner textarea
-    ) {
+    #swift-agent-widget-inner button,
+    #swift-agent-widget-inner input,
+    #swift-agent-widget-inner textarea
+  ) {
     font: inherit;
     color: inherit;
   }
@@ -200,11 +225,34 @@
   display: none;
 }
 
-.font-dm-mono {
+.swift-chat-panel {
+  min-height: 0;
+}
+
+.swift-chat-messages {
+  min-height: 0;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 639.98px) {
+  .swift-chat-panel {
+    height: 100%;
+  }
+
+  @supports (height: 100dvh) {
+    .swift-chat-panel {
+      height: 100dvh;
+    }
+  }
+}
+
+.font-mono {
   font-family: "DM Mono", "Courier New", monospace;
 }
 
-.font-stolzl {
+.font-sans {
   font-family: "Stolzl", ui-sans-serif, system-ui, sans-serif;
 }
 

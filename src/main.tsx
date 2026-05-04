@@ -60,6 +60,43 @@ function WidgetContent({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [chatOpen]);
 
+  // Lock the host page scroll while the chat is open, especially for iOS Safari.
+  useEffect(() => {
+    if (!chatOpen) return;
+
+    const scrollY = window.scrollY;
+    const { body, documentElement } = document;
+    const previousBodyStyles = {
+      left: body.style.left,
+      overflow: body.style.overflow,
+      position: body.style.position,
+      right: body.style.right,
+      top: body.style.top,
+      width: body.style.width,
+    };
+    const previousHtmlOverflow = documentElement.style.overflow;
+    const scrollbarWidth = window.innerWidth - documentElement.clientWidth;
+
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.left = "0";
+    body.style.right = scrollbarWidth > 0 ? `${scrollbarWidth}px` : "0";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "auto";
+    documentElement.style.overflow = "hidden";
+
+    return () => {
+      body.style.left = previousBodyStyles.left;
+      body.style.overflow = previousBodyStyles.overflow;
+      body.style.position = previousBodyStyles.position;
+      body.style.right = previousBodyStyles.right;
+      body.style.top = previousBodyStyles.top;
+      body.style.width = previousBodyStyles.width;
+      documentElement.style.overflow = previousHtmlOverflow;
+      window.scrollTo(0, scrollY);
+    };
+  }, [chatOpen]);
+
   // Rotating prompt bubble — starts hidden, shows questions in bursts with pauses
   const [bubbleIndex, setBubbleIndex] = useState(0);
   const [bubbleVisible, setBubbleVisible] = useState(false);
@@ -142,9 +179,7 @@ function WidgetContent({
 
       {/* Chat panel — fullscreen on mobile, floating card on desktop */}
       {chatOpen && (
-        <div
-          className="pointer-events-auto widget-animate-slide-up fixed inset-0 flex flex-col bg-white overflow-hidden sm:inset-auto sm:bottom-[110px] sm:right-5 sm:h-[500px] sm:max-h-[calc(100vh-140px)] sm:w-[380px] sm:shadow-[0_8px_40px_rgba(0,0,0,0.16)]"
-        >
+        <div className="swift-chat-panel pointer-events-auto widget-animate-slide-up fixed inset-0 flex min-h-0 flex-col overflow-hidden bg-white sm:inset-auto sm:bottom-[110px] sm:right-5 sm:h-[500px] sm:max-h-[calc(100vh-140px)] sm:w-[380px] sm:shadow-[0_8px_40px_rgba(0,0,0,0.16)]">
           {/* Header */}
           <div className="flex shrink-0 items-center justify-between border-b border-gray-100 bg-white px-4 py-3">
             <div className="flex items-center gap-3">
@@ -159,7 +194,7 @@ function WidgetContent({
                   {initial}
                 </div>
               )}
-              <span className="font-dm-mono truncate md:text-base text-sm font-normal tracking-wide text-gray-800 uppercase">
+              <span className="font-mono truncate md:text-base text-sm font-normal tracking-wide text-gray-800 uppercase">
                 {displayName}
               </span>
             </div>
@@ -172,7 +207,10 @@ function WidgetContent({
           </div>
 
           {/* Messages */}
-          <div className="scrollbar-none relative flex-1 overflow-y-auto px-4 py-5">
+          <div
+            ref={chat.chatScrollRef}
+            className="swift-chat-messages scrollbar-none relative min-h-0 flex-1 overflow-y-auto px-4 py-5"
+          >
             <ChatMessageList
               messages={chat.chatMessages}
               thinkingText={chat.chatThinkingText}
@@ -220,7 +258,7 @@ function WidgetContent({
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-bold text-gray-600">
                 ?
               </span>
-              <span className="font-dm-mono whitespace-nowrap text-xs font-medium tracking-wide text-black uppercase sm:text-sm">
+              <span className="font-mono whitespace-nowrap text-xs font-medium tracking-wide text-black uppercase sm:text-sm">
                 {bubbleQuestions[bubbleIndex]}
               </span>
             </button>

@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { type ChatAttachment, type ChatMsg } from "../components/types";
 import { getBaseUrl } from "../lib/api-client";
@@ -16,7 +23,8 @@ interface UseWidgetChatReturn {
   removeSelectedFile: (id: string) => void;
   isChatLoading: boolean;
   chatThinkingText: string | null;
-  chatEndRef: React.RefObject<HTMLDivElement | null>;
+  chatEndRef: RefObject<HTMLDivElement | null>;
+  chatScrollRef: RefObject<HTMLDivElement | null>;
   handleSendChat: () => void;
   sendMessage: (text: string) => void;
 }
@@ -27,7 +35,7 @@ export function useWidgetChat({
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([
     {
       id: 1,
-      text: "Hello! How can I assist you today?",
+      text: "Hey there! 👋 How can I help you?",
       sender: "agent",
       time: "",
     },
@@ -37,6 +45,7 @@ export function useWidgetChat({
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [chatThinkingText, setChatThinkingText] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
   const chatSessionId = useMemo(() => crypto.randomUUID(), []);
 
   const chatInputRef = useRef(chatInput);
@@ -55,7 +64,24 @@ export function useWidgetChat({
   }, []);
 
   const scrollToBottom = useCallback(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    requestAnimationFrame(() => {
+      const scrollContainer = chatScrollRef.current;
+
+      if (scrollContainer) {
+        try {
+          scrollContainer.scrollTo({
+            top: scrollContainer.scrollHeight,
+            behavior: "smooth",
+          });
+        } catch {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        }
+
+        return;
+      }
+
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    });
   }, []);
 
   const addSelectedFiles = useCallback((files: FileList | File[]) => {
@@ -259,6 +285,7 @@ export function useWidgetChat({
     isChatLoading,
     chatThinkingText,
     chatEndRef,
+    chatScrollRef,
     handleSendChat,
     sendMessage,
   };
