@@ -21,7 +21,12 @@ export function BriggsFace({ className, style, onClick }: BriggsFaceProps) {
   });
 
   return (
-    <button type="button" className={className} style={style} onClick={onClick}>
+    <button
+      type="button"
+      className={className}
+      style={{ ...style, boxShadow: "none", filter: "none" }}
+      onClick={onClick}
+    >
       <RiveComponent style={{ width: "100%", height: "100%" }} />
     </button>
   );

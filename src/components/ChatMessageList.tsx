@@ -35,6 +35,7 @@ interface ChatMessageListProps {
   messages: ChatMsg[];
   thinkingText?: string | null;
   chatEndRef: React.RefObject<HTMLDivElement | null>;
+  footer?: React.ReactNode;
   compact?: boolean;
 }
 
@@ -48,10 +49,11 @@ export function ChatMessageList({
   messages,
   thinkingText,
   chatEndRef,
+  footer,
   compact = false,
 }: ChatMessageListProps) {
   return (
-    <>
+    <div className="flex min-h-full flex-col">
       {messages.map((msg, index) => (
         <div
           key={msg.id}
@@ -142,8 +144,10 @@ export function ChatMessageList({
         </div>
       )}
 
+      {footer ? <div className="mt-auto">{footer}</div> : null}
+
       {/* Bottom scroll anchor */}
       <div ref={chatEndRef} className={compact ? "h-1 w-full" : "h-2 w-full"} />
-    </>
+    </div>
   );
 }
