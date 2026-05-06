@@ -215,19 +215,20 @@ function WidgetContent({
               messages={chat.chatMessages}
               thinkingText={chat.chatThinkingText}
               chatEndRef={chat.chatEndRef}
+              footer={
+                <div className="px-4 pb-[18px] pt-8 text-center font-mono text-[11px] uppercase leading-none text-black/40">
+                  POWERED BY{" "}
+                  <a
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    href="https://swiftagents.org"
+                    className="hover:underline"
+                  >
+                    SWIFTAGENTS.ORG
+                  </a>
+                </div>
+              }
             />
-          </div>
-
-          <div className="shrink-0 px-4 pb-3 pt-1.5 text-center font-mono text-[11px] uppercase text-black/40 leading-none">
-            POWERED BY{" "}
-            <a
-              target="_blank"
-              rel="noreferrer noopener"
-              href="https://swiftagents.org"
-              className="hover:underline"
-            >
-              SWIFTAGENTS.ORG
-            </a>
           </div>
 
           {/* Input */}
