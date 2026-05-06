@@ -209,14 +209,14 @@ function WidgetContent({
           {/* Messages */}
           <div
             ref={chat.chatScrollRef}
-            className="swift-chat-messages scrollbar-none relative min-h-0 flex-1 overflow-y-auto px-4 py-5"
+            className="swift-chat-messages scrollbar-none relative min-h-0 flex-1 overflow-y-auto p-4"
           >
             <ChatMessageList
               messages={chat.chatMessages}
               thinkingText={chat.chatThinkingText}
               chatEndRef={chat.chatEndRef}
               footer={
-                <div className="px-4 pb-[18px] pt-8 text-center font-mono text-[11px] uppercase leading-none text-black/40">
+                <div className="px-4 pt-8 text-center font-mono text-[11px] uppercase leading-none text-black/40">
                   POWERED BY{" "}
                   <a
                     target="_blank"
