@@ -218,6 +218,18 @@ function WidgetContent({
             />
           </div>
 
+          <div className="shrink-0 px-4 pb-3 pt-1.5 text-center font-mono text-[11px] uppercase text-black/40 leading-none">
+            POWERED BY{" "}
+            <a
+              target="_blank"
+              rel="noreferrer noopener"
+              href="https://swiftagents.org"
+              className="hover:underline"
+            >
+              SWIFTAGENTS.ORG
+            </a>
+          </div>
+
           {/* Input */}
           <div className="shrink-0 border border-[#D9D9D9] bg-white px-4 py-3 mx-3 mb-3 rounded-md">
             <ChatInput
@@ -238,7 +250,7 @@ function WidgetContent({
       {mode === "widget" && (
         <div
           className={cn(
-            "pointer-events-auto fixed z-[100] flex flex-col items-end gap-3",
+            "pointer-events-auto fixed z-100 flex flex-col items-end gap-3",
             chatOpen && "hidden sm:flex",
           )}
           style={{ bottom: 30, right: 30 }}
