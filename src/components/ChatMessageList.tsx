@@ -63,7 +63,7 @@ export function ChatMessageList({
             msg.sender === "user" ? "justify-end" : "justify-start",
           )}
         >
-          {msg.sender === "agent" ? (
+          {msg.sender === "agent" && msg.text ? (
             <div
               className={cn(
                 "font-sans max-w-[90%] rounded-[24px] bg-[#F2F8FF] px-4 py-2.5 text-[#006BE5]",
@@ -136,7 +136,7 @@ export function ChatMessageList({
       {/* Typing indicator */}
       {thinkingText && (
         <div className="flex w-full justify-start">
-          <div className="flex items-center gap-1.5 px-1 py-2">
+          <div className="flex items-center gap-1.5 rounded-[24px] bg-[#F2F8FF] px-4 py-3">
             <span className="h-2 w-2 animate-[bounce_1.2s_ease-in-out_infinite] rounded-full bg-[#1a73e8]/50" />
             <span className="h-2 w-2 animate-[bounce_1.2s_ease-in-out_0.2s_infinite] rounded-full bg-[#1a73e8]/50" />
             <span className="h-2 w-2 animate-[bounce_1.2s_ease-in-out_0.4s_infinite] rounded-full bg-[#1a73e8]/50" />
