@@ -10,6 +10,9 @@ import {
 import { type ChatAttachment, type ChatMsg } from "../components/types";
 import { getBaseUrl } from "../lib/api-client";
 
+const DEFAULT_CHAT_ERROR_TEXT =
+  "Sorry, something went wrong. Please try again.";
+
 interface UseWidgetChatOptions {
   companyId: string;
 }
@@ -221,6 +224,19 @@ export function useWidgetChat({
                   ),
                 );
                 scrollToBottom();
+              } else if (stage === "error") {
+                setChatThinkingText(null);
+                const errorText =
+                  typeof message === "string" && message.trim()
+                    ? message
+                    : DEFAULT_CHAT_ERROR_TEXT;
+                agentText = errorText;
+                setChatMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === agentMsgId ? { ...m, text: errorText } : m,
+                  ),
+                );
+                scrollToBottom();
               }
             } catch {
               // Skip malformed data
@@ -248,7 +264,7 @@ export function useWidgetChat({
           ...prev.filter((m) => m.id !== agentMsgId),
           {
             id: agentMsgId,
-            text: "Sorry, something went wrong. Please try again.",
+            text: DEFAULT_CHAT_ERROR_TEXT,
             sender: "agent" as const,
             time: new Date().toLocaleTimeString([], {
               hour: "2-digit",

@@ -1,7 +1,74 @@
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 import { cn } from "../lib/cn";
 import { type ChatAttachment, type ChatMsg } from "./types";
+
+const TICKET_ID_RE =
+  /\*{0,2}Ticket\s+ID:?\*{0,2}\s*\*{0,2}([A-Z0-9-]{4,})\*{0,2}(?=\s|$|[^A-Za-z0-9-])/i;
+
+function extractTicketId(text: string) {
+  const match = text.match(TICKET_ID_RE);
+  if (!match || match.index === undefined) return null;
+
+  return {
+    before: text.slice(0, match.index).replace(/\s+$/, ""),
+    ticketId: match[1],
+    after: text.slice(match.index + match[0].length).replace(/^\s+/, ""),
+  };
+}
+
+function TicketBadge({ ticketId }: { ticketId: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(ticketId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard unavailable — ignore silently.
+    }
+  };
+
+  return (
+    <div className="my-2 flex items-center justify-between gap-3 rounded-2xl border border-[#006BE5]/15 bg-white px-3 py-2.5">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#006BE5]/10">
+          <svg
+            viewBox="0 0 20 20"
+            fill="none"
+            className="h-3.5 w-3.5 text-[#006BE5]"
+            aria-hidden="true"
+          >
+            <path
+              d="M4 10.5l3.5 3.5L16 6"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </div>
+        <div className="min-w-0">
+          <p className="text-[9px] font-semibold tracking-[0.12em] text-[#006BE5]/70 uppercase">
+            Ticket ID
+          </p>
+          <p className="truncate font-mono text-[13px] font-bold text-[#006BE5]">
+            {ticketId}
+          </p>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="shrink-0 rounded-full border border-[#006BE5]/20 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-[#006BE5] uppercase transition-colors hover:bg-[#006BE5]/5"
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
 
 const MARKDOWN_COMPONENTS = {
   p: ({ children }: { children?: React.ReactNode }) => (
@@ -45,6 +112,23 @@ function attachmentLabel(file: ChatAttachment) {
   return file.name.split(".").pop()?.slice(0, 3).toUpperCase() || "IMG";
 }
 
+function isCompletionMessage(text: string) {
+  return /\b(FOUND|IDENTIFIED)\b/i.test(text);
+}
+
+function formatThinkingText(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) return trimmed;
+  // Stage labels arrive ALL CAPS from the backend; sentence-case for UI.
+  const isAllCaps = trimmed === trimmed.toUpperCase();
+  if (!isAllCaps) return trimmed;
+
+  const lower = trimmed.toLowerCase();
+  const sentence = lower.charAt(0).toUpperCase() + lower.slice(1);
+
+  return isCompletionMessage(trimmed) ? sentence : `${sentence}…`;
+}
+
 export function ChatMessageList({
   messages,
   thinkingText,
@@ -66,17 +150,39 @@ export function ChatMessageList({
           {msg.sender === "agent" ? (
             <div
               className={cn(
-                "font-sans max-w-[90%] rounded-[24px] bg-[#F2F8FF] px-4 py-2.5 text-[#006BE5]",
+                "font-sans max-w-[90%] min-w-0 rounded-[24px] bg-[#F2F8FF] px-4 py-2.5 text-[#006BE5] [overflow-wrap:anywhere]",
                 compact
                   ? "text-[13px] leading-relaxed"
                   : "text-[14px] leading-relaxed",
               )}
             >
-              {msg.text ? (
-                <ReactMarkdown components={MARKDOWN_COMPONENTS}>
-                  {msg.text}
-                </ReactMarkdown>
-              ) : null}
+              {msg.text
+                ? (() => {
+                    const parts = extractTicketId(msg.text);
+                    if (!parts) {
+                      return (
+                        <ReactMarkdown components={MARKDOWN_COMPONENTS}>
+                          {msg.text}
+                        </ReactMarkdown>
+                      );
+                    }
+                    return (
+                      <>
+                        {parts.before && (
+                          <ReactMarkdown components={MARKDOWN_COMPONENTS}>
+                            {parts.before}
+                          </ReactMarkdown>
+                        )}
+                        <TicketBadge ticketId={parts.ticketId} />
+                        {parts.after && (
+                          <ReactMarkdown components={MARKDOWN_COMPONENTS}>
+                            {parts.after}
+                          </ReactMarkdown>
+                        )}
+                      </>
+                    );
+                  })()
+                : null}
             </div>
           ) : (
             /* User message */
@@ -121,11 +227,11 @@ export function ChatMessageList({
               {msg.text ? (
                 <div
                   className={cn(
-                    "rounded-[24px] bg-[#006BE5] px-4 py-2.5 text-white",
+                    "min-w-0 max-w-full rounded-[24px] bg-[#006BE5] px-4 py-2.5 text-white",
                     compact ? "text-[12px]" : "text-[13px]",
                   )}
                 >
-                  <p>{msg.text}</p>
+                  <p className="[overflow-wrap:anywhere]">{msg.text}</p>
                 </div>
               ) : null}
             </div>
@@ -133,13 +239,32 @@ export function ChatMessageList({
         </div>
       ))}
 
-      {/* Typing indicator */}
+      {/* Typing indicator with live stage text */}
       {thinkingText && (
-        <div className="flex w-full justify-start">
-          <div className="flex items-center gap-1.5 px-1 py-2">
-            <span className="h-2 w-2 animate-[bounce_1.2s_ease-in-out_infinite] rounded-full bg-[#1a73e8]/50" />
-            <span className="h-2 w-2 animate-[bounce_1.2s_ease-in-out_0.2s_infinite] rounded-full bg-[#1a73e8]/50" />
-            <span className="h-2 w-2 animate-[bounce_1.2s_ease-in-out_0.4s_infinite] rounded-full bg-[#1a73e8]/50" />
+        <div className={cn("flex w-full justify-start", messages.length > 0 && "mt-8")}>
+          <div
+            className={cn(
+              "font-sans flex max-w-[90%] items-center gap-2 rounded-[24px] bg-[#F2F8FF] px-4 py-2.5 text-[#006BE5]",
+              compact
+                ? "text-[12px] leading-relaxed"
+                : "text-[13px] leading-relaxed",
+            )}
+          >
+            <span className="flex items-center gap-1" aria-hidden="true">
+              <span className="h-1.5 w-1.5 animate-[bounce_1.2s_ease-in-out_infinite] rounded-full bg-[#006BE5]/60" />
+              <span className="h-1.5 w-1.5 animate-[bounce_1.2s_ease-in-out_0.2s_infinite] rounded-full bg-[#006BE5]/60" />
+              <span className="h-1.5 w-1.5 animate-[bounce_1.2s_ease-in-out_0.4s_infinite] rounded-full bg-[#006BE5]/60" />
+            </span>
+            <span
+              className={cn(
+                "tracking-wide",
+                isCompletionMessage(thinkingText)
+                  ? "font-semibold"
+                  : "font-normal opacity-80",
+              )}
+            >
+              {formatThinkingText(thinkingText)}
+            </span>
           </div>
         </div>
       )}
