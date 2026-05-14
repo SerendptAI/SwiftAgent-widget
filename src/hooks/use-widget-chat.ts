@@ -25,7 +25,6 @@ interface UseWidgetChatReturn {
   addSelectedFiles: (files: FileList | File[]) => void;
   removeSelectedFile: (id: string) => void;
   isChatLoading: boolean;
-  chatThinkingText: string | null;
   chatEndRef: RefObject<HTMLDivElement | null>;
   chatScrollRef: RefObject<HTMLDivElement | null>;
   handleSendChat: () => void;
@@ -38,15 +37,17 @@ export function useWidgetChat({
   const [chatMessages, setChatMessages] = useState<ChatMsg[]>([
     {
       id: 1,
-      text: "Hey there! 👋 How can I help you?",
+      text: "",
       sender: "agent",
       time: "",
+      blocks: [
+        { kind: "text", content: "Hey there! 👋 How can I help you?" },
+      ],
     },
   ]);
   const [chatInput, setChatInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<ChatAttachment[]>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
-  const [chatThinkingText, setChatThinkingText] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const chatSessionId = useMemo(() => crypto.randomUUID(), []);
@@ -66,8 +67,12 @@ export function useWidgetChat({
     };
   }, []);
 
+  const pendingScrollRef = useRef(false);
   const scrollToBottom = useCallback(() => {
+    if (pendingScrollRef.current) return;
+    pendingScrollRef.current = true;
     requestAnimationFrame(() => {
+      pendingScrollRef.current = false;
       const scrollContainer = chatScrollRef.current;
 
       if (scrollContainer) {
@@ -162,6 +167,77 @@ export function useWidgetChat({
       setTimeout(scrollToBottom, 50);
 
       const agentMsgId = Date.now() + 1;
+      // Create the agent placeholder up front so stage labels can attach to it
+      // before any stream chunk arrives.
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: agentMsgId,
+          text: "",
+          sender: "agent",
+          time: "",
+          blocks: [],
+          pending: true,
+        },
+      ]);
+
+      // Updater that returns `null` to signal "no change" — when nothing
+      // changed we hand the same array back to React so memo'd children
+      // (AgentMessage) skip re-rendering.
+      const updateAgent = (updater: (msg: ChatMsg) => ChatMsg | null) => {
+        setChatMessages((prev) => {
+          let changed = false;
+          const next = prev.map((m) => {
+            if (m.id !== agentMsgId) return m;
+            const updated = updater(m);
+            if (updated === null) return m;
+            changed = true;
+            return updated;
+          });
+          return changed ? next : prev;
+        });
+      };
+
+      const appendStage = (label: string) => {
+        const trimmed = label.trim();
+        if (!trimmed) return;
+        updateAgent((m) => {
+          const blocks = m.blocks ?? [];
+          const last = blocks[blocks.length - 1];
+          // Skip consecutive duplicate stages so repeated heartbeats don't
+          // produce duplicate rows in the log.
+          if (last?.kind === "stage" && last.content === trimmed) return null;
+          return {
+            ...m,
+            blocks: [...blocks, { kind: "stage", content: trimmed }],
+          };
+        });
+      };
+
+      const appendText = (chunk: string) => {
+        if (!chunk) return;
+        updateAgent((m) => {
+          const blocks = m.blocks ?? [];
+          const last = blocks[blocks.length - 1];
+          if (last?.kind === "text") {
+            const merged = blocks.slice(0, -1);
+            merged.push({ kind: "text", content: last.content + chunk });
+            return { ...m, blocks: merged };
+          }
+          return {
+            ...m,
+            blocks: [...blocks, { kind: "text", content: chunk }],
+          };
+        });
+      };
+
+      const replaceWithError = (errorText: string) => {
+        updateAgent((m) => ({
+          ...m,
+          blocks: [{ kind: "text", content: errorText }],
+          pending: false,
+        }));
+      };
 
       try {
         const res = await fetch(`${getBaseUrl()}/api/v1/chat/${companyId}/chat`, {
@@ -179,12 +255,7 @@ export function useWidgetChat({
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
-        let agentText = "";
         let buffer = "";
-        setChatMessages((prev) => [
-          ...prev,
-          { id: agentMsgId, text: "", sender: "agent", time: "" },
-        ]);
 
         while (true) {
           const { done, value } = await reader.read();
@@ -207,74 +278,62 @@ export function useWidgetChat({
               const message = parsed?.data?.message;
 
               if (stage === "thinking" && typeof message === "string") {
-                setChatThinkingText(message);
+                appendStage(message);
                 scrollToBottom();
               } else if (stage === "tool") {
                 const label = parsed?.data?.label;
                 if (typeof label === "string") {
-                  setChatThinkingText(label);
+                  appendStage(label);
                   scrollToBottom();
                 }
               } else if (stage === "stream" && typeof message === "string") {
-                setChatThinkingText(null);
-                agentText += message;
-                setChatMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === agentMsgId ? { ...m, text: agentText } : m,
-                  ),
-                );
+                appendText(message);
                 scrollToBottom();
               } else if (stage === "error") {
-                setChatThinkingText(null);
                 const errorText =
                   typeof message === "string" && message.trim()
                     ? message
                     : DEFAULT_CHAT_ERROR_TEXT;
-                agentText = errorText;
-                setChatMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === agentMsgId ? { ...m, text: errorText } : m,
-                  ),
-                );
+                replaceWithError(errorText);
                 scrollToBottom();
               }
             } catch {
-              // Skip malformed data
+              continue;
             }
           }
         }
 
-        setChatMessages((prev) =>
-          prev.map((m) =>
-            m.id === agentMsgId
-              ? {
-                  ...m,
-                  text: agentText || "Sorry, I couldn't generate a response.",
-                  time: new Date().toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }),
-                }
-              : m,
-          ),
-        );
+        const now = new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        const fallback = "Sorry, I couldn't generate a response.";
+        updateAgent((m) => {
+          const blocks = m.blocks ?? [];
+          const hasText = blocks.some((b) => b.kind === "text");
+          return {
+            ...m,
+            blocks: hasText
+              ? blocks
+              : [...blocks, { kind: "text", content: fallback }],
+            pending: false,
+            time: now,
+          };
+        });
       } catch (err) {
         console.error("Chat error:", err);
-        setChatMessages((prev) => [
-          ...prev.filter((m) => m.id !== agentMsgId),
-          {
-            id: agentMsgId,
-            text: DEFAULT_CHAT_ERROR_TEXT,
-            sender: "agent" as const,
-            time: new Date().toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-          },
-        ]);
+        const now = new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        updateAgent((m) => ({
+          ...m,
+          blocks: [{ kind: "text", content: DEFAULT_CHAT_ERROR_TEXT }],
+          pending: false,
+          time: now,
+        }));
       } finally {
         setIsChatLoading(false);
-        setChatThinkingText(null);
       }
     },
     [companyId, chatSessionId, scrollToBottom],
@@ -299,7 +358,6 @@ export function useWidgetChat({
     addSelectedFiles,
     removeSelectedFile,
     isChatLoading,
-    chatThinkingText,
     chatEndRef,
     chatScrollRef,
     handleSendChat,

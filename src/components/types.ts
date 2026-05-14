@@ -7,10 +7,17 @@ export interface ChatAttachment {
   kind: "image" | "pdf";
 }
 
+export interface AgentBlock {
+  kind: "stage" | "text";
+  content: string;
+}
+
 export interface ChatMsg {
   id: number;
   text: string;
   sender: "user" | "agent";
   time: string;
   attachments?: ChatAttachment[];
+  blocks?: AgentBlock[];
+  pending?: boolean;
 }
