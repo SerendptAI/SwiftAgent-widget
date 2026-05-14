@@ -350,7 +350,9 @@ export function ChatMessageList({
                     compact ? "text-[12px]" : "text-[13px]",
                   )}
                 >
-                  <p className="[overflow-wrap:anywhere]">{msg.text}</p>
+                  <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+                    {msg.text}
+                  </p>
                 </div>
               ) : null}
             </div>
