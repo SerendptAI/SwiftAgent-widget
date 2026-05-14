@@ -1,4 +1,4 @@
-# SwiftAgent Widget
+# SwiftAgent Widgets
 
 A standalone embeddable AI voice + chat widget built with React + Vite (IIFE bundle), designed to be dropped into any website via a single `<script>` tag.
 
