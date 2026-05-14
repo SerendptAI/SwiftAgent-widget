@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 
 import { Icons } from "./icons";
 import { type ChatAttachment } from "./types";
@@ -32,8 +32,22 @@ export function ChatInput({
   isLoading,
 }: ChatInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const canSend =
     (value.trim().length > 0 || selectedFiles.length > 0) && !isLoading;
+
+  useLayoutEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "0px";
+    ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`;
+  }, [value]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    if (canSend) onSend();
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -83,15 +97,15 @@ export function ChatInput({
         </div>
       )}
 
-      {/* Text input in rounded container */}
       <div>
-        <input
-          type="text"
+        <textarea
+          ref={textareaRef}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && onSend()}
+          onKeyDown={handleKeyDown}
           placeholder="Ask a question"
-          className="w-full bg-transparent font-sans text-base text-gray-800 outline-none placeholder-gray-400 sm:text-sm"
+          rows={1}
+          className="block w-full resize-none bg-transparent font-sans text-base text-gray-800 outline-none placeholder-gray-400 sm:text-sm"
         />
       </div>
 
