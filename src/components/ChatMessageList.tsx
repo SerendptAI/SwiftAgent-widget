@@ -162,33 +162,12 @@ function StageBlock({
   return (
     <div
       className={cn(
-        "font-mono flex items-center gap-2 tracking-[0.04em] text-[#006BE5]",
+        "font-mono flex items-center gap-2 tracking-[0.04em] text-[#000000] uppercase",
         compact ? "text-[11px]" : "text-[12px]",
         showSpinner ? "opacity-90" : "opacity-50",
       )}
     >
-      {showSpinner ? (
-        <span className="flex items-center gap-1" aria-hidden="true">
-          <span className="h-1 w-1 animate-[bounce_1.2s_ease-in-out_infinite] rounded-full bg-[#006BE5]/70" />
-          <span className="h-1 w-1 animate-[bounce_1.2s_ease-in-out_0.2s_infinite] rounded-full bg-[#006BE5]/70" />
-          <span className="h-1 w-1 animate-[bounce_1.2s_ease-in-out_0.4s_infinite] rounded-full bg-[#006BE5]/70" />
-        </span>
-      ) : (
-        <svg
-          viewBox="0 0 12 12"
-          className="h-2.5 w-2.5 shrink-0"
-          aria-hidden="true"
-        >
-          <path
-            d="M2.5 6.5l2.3 2.3L9.5 3.8"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      )}
+
       <span className="truncate">{displayText}</span>
     </div>
   );
