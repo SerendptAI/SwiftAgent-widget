@@ -1,8 +1,12 @@
-import { useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 import { cn } from "../lib/cn";
-import { type ChatAttachment, type ChatMsg } from "./types";
+import {
+  type AgentBlock,
+  type ChatAttachment,
+  type ChatMsg,
+} from "./types";
 
 const TICKET_ID_RE =
   /\*{0,2}Ticket\s+ID:?\*{0,2}\s*\*{0,2}([A-Z0-9-]{4,})\*{0,2}(?=\s|$|[^A-Za-z0-9-])/i;
@@ -100,11 +104,184 @@ const MARKDOWN_COMPONENTS = {
 
 interface ChatMessageListProps {
   messages: ChatMsg[];
-  thinkingText?: string | null;
   chatEndRef: React.RefObject<HTMLDivElement | null>;
   footer?: React.ReactNode;
   compact?: boolean;
 }
+
+interface AgentMessageProps {
+  msg: ChatMsg;
+  compact: boolean;
+  onTypingTick?: () => void;
+}
+
+function useTypewriter(target: string, onTick?: () => void) {
+  const [displayedLength, setDisplayedLength] = useState(0);
+  const onTickRef = useRef(onTick);
+  onTickRef.current = onTick;
+  const targetLength = target.length;
+  // Depend on the boolean rather than `displayedLength` so the interval is
+  // only torn down on the catch-up/grow transitions, not every tick.
+  const needsTyping = displayedLength < targetLength;
+
+  useEffect(() => {
+    if (!needsTyping) return;
+    const id = window.setInterval(() => {
+      setDisplayedLength((prev) => {
+        if (prev >= targetLength) return prev;
+        const remaining = targetLength - prev;
+        const charsPerTick = Math.max(1, Math.ceil(remaining / 50));
+        const next = Math.min(prev + charsPerTick, targetLength);
+        onTickRef.current?.();
+        return next;
+      });
+    }, 18);
+    return () => window.clearInterval(id);
+  }, [needsTyping, targetLength]);
+
+  return {
+    displayText: target.slice(0, displayedLength),
+    isTyping: needsTyping,
+  };
+}
+
+function StageBlock({
+  content,
+  isActive,
+  compact,
+  onTypingTick,
+}: {
+  content: string;
+  isActive: boolean;
+  compact: boolean;
+  onTypingTick?: () => void;
+}) {
+  const { displayText, isTyping } = useTypewriter(content, onTypingTick);
+  const showSpinner = isActive || isTyping;
+
+  return (
+    <div
+      className={cn(
+        "font-mono flex items-center gap-2 tracking-[0.04em] text-[#006BE5]",
+        compact ? "text-[11px]" : "text-[12px]",
+        showSpinner ? "opacity-90" : "opacity-50",
+      )}
+    >
+      {showSpinner ? (
+        <span className="flex items-center gap-1" aria-hidden="true">
+          <span className="h-1 w-1 animate-[bounce_1.2s_ease-in-out_infinite] rounded-full bg-[#006BE5]/70" />
+          <span className="h-1 w-1 animate-[bounce_1.2s_ease-in-out_0.2s_infinite] rounded-full bg-[#006BE5]/70" />
+          <span className="h-1 w-1 animate-[bounce_1.2s_ease-in-out_0.4s_infinite] rounded-full bg-[#006BE5]/70" />
+        </span>
+      ) : (
+        <svg
+          viewBox="0 0 12 12"
+          className="h-2.5 w-2.5 shrink-0"
+          aria-hidden="true"
+        >
+          <path
+            d="M2.5 6.5l2.3 2.3L9.5 3.8"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+      <span className="truncate">{displayText}</span>
+    </div>
+  );
+}
+
+function TextBlock({
+  content,
+  isActive,
+  compact,
+  onTypingTick,
+}: {
+  content: string;
+  isActive: boolean;
+  compact: boolean;
+  onTypingTick?: () => void;
+}) {
+  const { displayText, isTyping } = useTypewriter(content, onTypingTick);
+  // Hold the ticket badge until the full message is in — extracting from a
+  // partial string would flash partial IDs.
+  const settled = !isTyping && !isActive;
+  const parts = settled ? extractTicketId(displayText) : null;
+
+  return (
+    <div
+      className={cn(
+        "font-sans min-w-0 max-w-full rounded-[24px] bg-[#F2F8FF] px-4 py-2.5 text-[#006BE5] [overflow-wrap:anywhere]",
+        compact
+          ? "text-[13px] leading-relaxed"
+          : "text-[14px] leading-relaxed",
+      )}
+    >
+      {parts ? (
+        <>
+          {parts.before && (
+            <ReactMarkdown components={MARKDOWN_COMPONENTS}>
+              {parts.before}
+            </ReactMarkdown>
+          )}
+          <TicketBadge ticketId={parts.ticketId} />
+          {parts.after && (
+            <ReactMarkdown components={MARKDOWN_COMPONENTS}>
+              {parts.after}
+            </ReactMarkdown>
+          )}
+        </>
+      ) : (
+        <ReactMarkdown components={MARKDOWN_COMPONENTS}>
+          {displayText}
+        </ReactMarkdown>
+      )}
+    </div>
+  );
+}
+
+const AgentMessage = memo(function AgentMessage({
+  msg,
+  compact,
+  onTypingTick,
+}: AgentMessageProps) {
+  const blocks: AgentBlock[] =
+    msg.blocks && msg.blocks.length > 0
+      ? msg.blocks
+      : msg.text
+        ? [{ kind: "text", content: msg.text }]
+        : [];
+  const lastIndex = blocks.length - 1;
+
+  return (
+    <div className="flex max-w-[90%] min-w-0 flex-col items-start gap-2">
+      {blocks.map((block, i) => {
+        const isActive = !!msg.pending && i === lastIndex;
+        const key = `${i}-${block.kind}`;
+        return block.kind === "stage" ? (
+          <StageBlock
+            key={key}
+            content={block.content}
+            isActive={isActive}
+            compact={compact}
+            onTypingTick={onTypingTick}
+          />
+        ) : (
+          <TextBlock
+            key={key}
+            content={block.content}
+            isActive={isActive}
+            compact={compact}
+            onTypingTick={onTypingTick}
+          />
+        );
+      })}
+    </div>
+  );
+});
 
 function attachmentLabel(file: ChatAttachment) {
   if (file.kind === "pdf") return "PDF";
@@ -112,30 +289,25 @@ function attachmentLabel(file: ChatAttachment) {
   return file.name.split(".").pop()?.slice(0, 3).toUpperCase() || "IMG";
 }
 
-function isCompletionMessage(text: string) {
-  return /\b(FOUND|IDENTIFIED)\b/i.test(text);
-}
-
-function formatThinkingText(text: string) {
-  const trimmed = text.trim();
-  if (!trimmed) return trimmed;
-  // Stage labels arrive ALL CAPS from the backend; sentence-case for UI.
-  const isAllCaps = trimmed === trimmed.toUpperCase();
-  if (!isAllCaps) return trimmed;
-
-  const lower = trimmed.toLowerCase();
-  const sentence = lower.charAt(0).toUpperCase() + lower.slice(1);
-
-  return isCompletionMessage(trimmed) ? sentence : `${sentence}…`;
-}
-
 export function ChatMessageList({
   messages,
-  thinkingText,
   chatEndRef,
   footer,
   compact = false,
 }: ChatMessageListProps) {
+  const scrollPendingRef = useRef(false);
+  // Stable identity so memo'd <AgentMessage> doesn't re-render on every
+  // parent render; rAF-coalesced so N concurrent typewriters scroll once
+  // per frame instead of N times.
+  const handleTypingTick = useCallback(() => {
+    if (scrollPendingRef.current) return;
+    scrollPendingRef.current = true;
+    requestAnimationFrame(() => {
+      scrollPendingRef.current = false;
+      chatEndRef.current?.scrollIntoView({ block: "end" });
+    });
+  }, [chatEndRef]);
+
   return (
     <div className="flex min-h-full flex-col">
       {messages.map((msg, index) => (
@@ -147,45 +319,13 @@ export function ChatMessageList({
             msg.sender === "user" ? "justify-end" : "justify-start",
           )}
         >
-          {msg.sender === "agent" && msg.text ? (
-            <div
-              className={cn(
-                "font-sans max-w-[90%] min-w-0 rounded-[24px] bg-[#F2F8FF] px-4 py-2.5 text-[#006BE5] [overflow-wrap:anywhere]",
-                compact
-                  ? "text-[13px] leading-relaxed"
-                  : "text-[14px] leading-relaxed",
-              )}
-            >
-              {msg.text
-                ? (() => {
-                    const parts = extractTicketId(msg.text);
-                    if (!parts) {
-                      return (
-                        <ReactMarkdown components={MARKDOWN_COMPONENTS}>
-                          {msg.text}
-                        </ReactMarkdown>
-                      );
-                    }
-                    return (
-                      <>
-                        {parts.before && (
-                          <ReactMarkdown components={MARKDOWN_COMPONENTS}>
-                            {parts.before}
-                          </ReactMarkdown>
-                        )}
-                        <TicketBadge ticketId={parts.ticketId} />
-                        {parts.after && (
-                          <ReactMarkdown components={MARKDOWN_COMPONENTS}>
-                            {parts.after}
-                          </ReactMarkdown>
-                        )}
-                      </>
-                    );
-                  })()
-                : null}
-            </div>
+          {msg.sender === "agent" && (msg.text || msg.blocks?.length) ? (
+            <AgentMessage
+              msg={msg}
+              compact={compact}
+              onTypingTick={handleTypingTick}
+            />
           ) : (
-            /* User message */
             <div
               className={cn(
                 "font-sans flex max-w-[90%] flex-col items-end text-black tracking-wide",
@@ -238,36 +378,6 @@ export function ChatMessageList({
           )}
         </div>
       ))}
-
-      {/* Typing indicator with live stage text */}
-      {thinkingText && (
-        <div className={cn("flex w-full justify-start", messages.length > 0 && "mt-8")}>
-          <div
-            className={cn(
-              "font-sans flex max-w-[90%] items-center gap-2 rounded-[24px] bg-[#F2F8FF] px-4 py-2.5 text-[#006BE5]",
-              compact
-                ? "text-[12px] leading-relaxed"
-                : "text-[13px] leading-relaxed",
-            )}
-          >
-            <span className="flex items-center gap-1" aria-hidden="true">
-              <span className="h-1.5 w-1.5 animate-[bounce_1.2s_ease-in-out_infinite] rounded-full bg-[#006BE5]/60" />
-              <span className="h-1.5 w-1.5 animate-[bounce_1.2s_ease-in-out_0.2s_infinite] rounded-full bg-[#006BE5]/60" />
-              <span className="h-1.5 w-1.5 animate-[bounce_1.2s_ease-in-out_0.4s_infinite] rounded-full bg-[#006BE5]/60" />
-            </span>
-            <span
-              className={cn(
-                "tracking-wide",
-                isCompletionMessage(thinkingText)
-                  ? "font-semibold"
-                  : "font-normal opacity-80",
-              )}
-            >
-              {formatThinkingText(thinkingText)}
-            </span>
-          </div>
-        </div>
-      )}
 
       {footer ? <div className="mt-auto">{footer}</div> : null}
 

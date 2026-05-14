@@ -213,7 +213,6 @@ function WidgetContent({
           >
             <ChatMessageList
               messages={chat.chatMessages}
-              thinkingText={chat.chatThinkingText}
               chatEndRef={chat.chatEndRef}
               footer={
                 <div className="px-4 pt-8 text-center font-mono text-[11px] uppercase leading-none text-black/40">
