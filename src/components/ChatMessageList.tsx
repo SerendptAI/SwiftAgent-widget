@@ -147,7 +147,7 @@ export function ChatMessageList({
             msg.sender === "user" ? "justify-end" : "justify-start",
           )}
         >
-          {msg.sender === "agent" ? (
+          {msg.sender === "agent" && msg.text ? (
             <div
               className={cn(
                 "font-sans max-w-[90%] min-w-0 rounded-[24px] bg-[#F2F8FF] px-4 py-2.5 text-[#006BE5] [overflow-wrap:anywhere]",
