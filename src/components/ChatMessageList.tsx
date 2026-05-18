@@ -2,11 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 import { cn } from "../lib/cn";
-import {
-  type AgentBlock,
-  type ChatAttachment,
-  type ChatMsg,
-} from "./types";
+import { type AgentBlock, type ChatAttachment, type ChatMsg } from "./types";
 
 const TICKET_ID_RE =
   /\*{0,2}Ticket\s+ID:?\*{0,2}\s*\*{0,2}([A-Z0-9-]{4,})\*{0,2}(?=\s|$|[^A-Za-z0-9-])/i;
@@ -168,7 +164,6 @@ function StageBlock({
         showSpinner ? "opacity-90" : "opacity-50",
       )}
     >
-
       <span className="truncate">{displayText}</span>
     </div>
   );
@@ -195,9 +190,7 @@ function TextBlock({
     <div
       className={cn(
         "font-sans min-w-0 max-w-full rounded-[24px] bg-[#F2F8FF] px-4 py-2.5 text-[#006BE5] [overflow-wrap:anywhere]",
-        compact
-          ? "text-[13px] leading-relaxed"
-          : "text-[14px] leading-relaxed",
+        compact ? "text-[13px] leading-relaxed" : "text-[14px] leading-relaxed",
       )}
     >
       {parts ? (
