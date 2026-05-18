@@ -105,6 +105,7 @@ const MARKDOWN_COMPONENTS = {
 interface ChatMessageListProps {
   messages: ChatMsg[];
   chatEndRef: React.RefObject<HTMLDivElement | null>;
+  chatScrollRef?: React.RefObject<HTMLDivElement | null>;
   footer?: React.ReactNode;
   compact?: boolean;
 }
@@ -271,6 +272,7 @@ function attachmentLabel(file: ChatAttachment) {
 export function ChatMessageList({
   messages,
   chatEndRef,
+  chatScrollRef,
   footer,
   compact = false,
 }: ChatMessageListProps) {
@@ -283,9 +285,15 @@ export function ChatMessageList({
     scrollPendingRef.current = true;
     requestAnimationFrame(() => {
       scrollPendingRef.current = false;
+      const scrollContainer = chatScrollRef?.current;
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        return;
+      }
+
       chatEndRef.current?.scrollIntoView({ block: "end" });
     });
-  }, [chatEndRef]);
+  }, [chatEndRef, chatScrollRef]);
 
   return (
     <div className="flex min-h-full flex-col">

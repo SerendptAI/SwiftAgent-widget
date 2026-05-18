@@ -97,6 +97,46 @@ function WidgetContent({
     };
   }, [chatOpen]);
 
+  // iOS Safari's visible viewport changes as browser chrome and the keyboard
+  // move. Keep the fullscreen widget sized to the real visible area so the
+  // message pane remains scrollable instead of being clipped below the fold.
+  useEffect(() => {
+    if (!chatOpen) return;
+
+    const host = document.getElementById(WIDGET_HOST_ID);
+    const setViewportHeight = () => {
+      const height = window.visualViewport?.height ?? window.innerHeight;
+      host?.style.setProperty("--swift-widget-viewport-height", `${height}px`);
+    };
+
+    setViewportHeight();
+    window.visualViewport?.addEventListener("resize", setViewportHeight);
+    window.visualViewport?.addEventListener("scroll", setViewportHeight);
+    window.addEventListener("resize", setViewportHeight);
+    window.addEventListener("orientationchange", setViewportHeight);
+
+    return () => {
+      window.visualViewport?.removeEventListener("resize", setViewportHeight);
+      window.visualViewport?.removeEventListener("scroll", setViewportHeight);
+      window.removeEventListener("resize", setViewportHeight);
+      window.removeEventListener("orientationchange", setViewportHeight);
+      host?.style.removeProperty("--swift-widget-viewport-height");
+    };
+  }, [chatOpen]);
+
+  useEffect(() => {
+    if (!chatOpen) return;
+
+    const frame = requestAnimationFrame(() => {
+      const scrollContainer = chat.chatScrollRef.current;
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      }
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [chat.chatMessages.length, chat.chatScrollRef, chatOpen]);
+
   // Rotating prompt bubble — starts hidden, shows questions in bursts with pauses
   const [bubbleIndex, setBubbleIndex] = useState(0);
   const [bubbleVisible, setBubbleVisible] = useState(false);
@@ -214,6 +254,7 @@ function WidgetContent({
             <ChatMessageList
               messages={chat.chatMessages}
               chatEndRef={chat.chatEndRef}
+              chatScrollRef={chat.chatScrollRef}
               footer={
                 <div className="px-4 pt-8 text-center font-mono text-[11px] uppercase leading-none text-black/40">
                   POWERED BY{" "}
