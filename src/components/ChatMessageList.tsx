@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
@@ -14,6 +15,7 @@ import {
   type AgentBlock,
   type ChatAttachment,
   type ChatMsg,
+  type NavigationHighlight,
   type NavigationStep,
 } from "./types";
 
@@ -228,6 +230,82 @@ function TextBlock({
   );
 }
 
+function HighlightOverlay({
+  highlight,
+  imgW,
+  imgH,
+}: {
+  highlight: NavigationHighlight;
+  imgW: number;
+  imgH: number;
+}) {
+  const reactId = useId().replace(/:/g, "");
+  const maskId = `spot-${reactId}`;
+  const arrowId = `arrow-${reactId}`;
+
+  // Center + radii of the spotlight oval. Pad the bbox so the bright area
+  // breathes a bit around small targets like sidebar items.
+  const cx = highlight.x + highlight.w / 2;
+  const cy = highlight.y + highlight.h / 2;
+  const rx = Math.max(highlight.w * 0.7, Math.min(40, imgW * 0.08));
+  const ry = Math.max(highlight.h * 0.85, Math.min(28, imgH * 0.06));
+
+  // Pick whichever corner is farther from the target so the arrow doesn't
+  // start off-image. Default origin is upper-right.
+  const fromRight = cx < imgW * 0.55;
+  const sideX = fromRight ? cx + rx + 12 : cx - rx - 12;
+  const endY = cy;
+  const startX = fromRight
+    ? Math.min(sideX + Math.min(110, imgW * 0.22), imgW - 12)
+    : Math.max(sideX - Math.min(110, imgW * 0.22), 12);
+  const startY = Math.max(cy - Math.min(90, imgH * 0.35), 12);
+  const ctrlX = (startX + sideX) / 2 + (fromRight ? 12 : -12);
+  const ctrlY = startY + (endY - startY) * 0.45;
+
+  const strokeW = Math.max(2, Math.min(3.5, imgW / 240));
+
+  return (
+    <svg
+      className="pointer-events-none absolute inset-0 h-full w-full"
+      viewBox={`0 0 ${imgW} ${imgH}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <defs>
+        <mask id={maskId} maskUnits="userSpaceOnUse">
+          <rect width={imgW} height={imgH} fill="white" />
+          <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="black" />
+        </mask>
+        <marker
+          id={arrowId}
+          viewBox="0 0 10 10"
+          refX="8"
+          refY="5"
+          markerWidth="5"
+          markerHeight="5"
+          orient="auto-start-reverse"
+        >
+          <path d="M0,0 L10,5 L0,10 z" fill="white" />
+        </marker>
+      </defs>
+      <rect
+        width={imgW}
+        height={imgH}
+        fill="rgba(0,0,0,0.45)"
+        mask={`url(#${maskId})`}
+      />
+      <path
+        d={`M ${startX} ${startY} Q ${ctrlX} ${ctrlY} ${sideX} ${endY}`}
+        stroke="white"
+        strokeWidth={strokeW}
+        strokeLinecap="round"
+        fill="none"
+        markerEnd={`url(#${arrowId})`}
+      />
+    </svg>
+  );
+}
+
 function NavigationStepCard({
   step,
   compact,
@@ -277,15 +355,10 @@ function NavigationStepCard({
             }}
           />
           {showHighlight && highlight ? (
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute rounded-md border-2 border-[#E93333] shadow-[0_0_0_4px_rgba(233,51,51,0.18)]"
-              style={{
-                left: `${(highlight.x / dims!.w) * 100}%`,
-                top: `${(highlight.y / dims!.h) * 100}%`,
-                width: `${(highlight.w / dims!.w) * 100}%`,
-                height: `${(highlight.h / dims!.h) * 100}%`,
-              }}
+            <HighlightOverlay
+              highlight={highlight}
+              imgW={dims!.w}
+              imgH={dims!.h}
             />
           ) : null}
           <span className="pointer-events-none absolute top-[7px] right-[7px] flex h-[33px] w-[33px] items-center justify-center rounded-full bg-white/90 text-black shadow-[0_2px_6px_rgba(0,0,0,0.12)] backdrop-blur-sm transition group-hover:scale-105 group-hover:bg-white">
