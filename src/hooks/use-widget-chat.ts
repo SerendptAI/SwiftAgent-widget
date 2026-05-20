@@ -8,6 +8,10 @@ import {
 } from "react";
 
 import {
+  TICKET_CREATED_RE,
+  TICKET_STAGE_RE,
+} from "../components/ChatMessageList";
+import {
   type ChatAttachment,
   type ChatMsg,
   type NavigationGuide,
@@ -225,6 +229,44 @@ export function useWidgetChat({
       const appendStage = (label: string) => {
         const trimmed = label.trim();
         if (!trimmed) return;
+
+        // Ticket-lifecycle events (creating / created / success) collapse
+        // into a single ticket block that updates in place — so the pill
+        // transitions from "Creating ticket..." to "Ticket created"
+        // without leaving stale duplicate rows behind.
+        if (TICKET_STAGE_RE.test(trimmed)) {
+          updateAgent((m) => {
+            const blocks = m.blocks ?? [];
+            const ticketIdx = blocks.findIndex(
+              (b) => b.kind === "stage" && TICKET_STAGE_RE.test(b.content),
+            );
+            if (ticketIdx >= 0) {
+              const existing = blocks[ticketIdx];
+              if (existing.kind === "stage" && existing.content === trimmed) {
+                return null;
+              }
+              // Lifecycle is monotonic: once a "created/success" event has
+              // landed, later "creating" events are stale and must not
+              // demote the pill back to the spinner state.
+              if (
+                existing.kind === "stage" &&
+                TICKET_CREATED_RE.test(existing.content) &&
+                !TICKET_CREATED_RE.test(trimmed)
+              ) {
+                return null;
+              }
+              const next = [...blocks];
+              next[ticketIdx] = { kind: "stage", content: trimmed };
+              return { ...m, blocks: next };
+            }
+            return {
+              ...m,
+              blocks: [...blocks, { kind: "stage", content: trimmed }],
+            };
+          });
+          return;
+        }
+
         updateAgent((m) => {
           const blocks = m.blocks ?? [];
           const last = blocks[blocks.length - 1];

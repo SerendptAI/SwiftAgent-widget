@@ -165,8 +165,77 @@ function useTypewriter(target: string, onTick?: () => void) {
   };
 }
 
+export const TICKET_STAGE_RE = /(creating.*ticket|ticket.*(created|success))/i;
+export const TICKET_CREATED_RE = /ticket.*(created|success)/i;
+
+function TicketLifecyclePill({
+  rawContent,
+  active,
+  onTypingTick,
+}: {
+  rawContent: string;
+  active: boolean;
+  onTypingTick?: () => void;
+}) {
+  const created = TICKET_CREATED_RE.test(rawContent);
+  const target = created ? "Ticket created" : "Creating ticket...";
+  const { displayText } = useTypewriter(target, onTypingTick);
+  const gradId = `ticket-spin-${useId().replace(/:/g, "")}`;
+
+  return (
+    <div className="font-sans inline-flex h-11 items-center gap-2 rounded-3xl bg-[#F6F6F6] px-4 py-2.5">
+      {created ? (
+        <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#15A05A] text-white">
+          <svg
+            viewBox="0 0 20 20"
+            fill="none"
+            className="size-3"
+            aria-hidden="true"
+          >
+            <path
+              d="M5 10.5l3.5 3.5L15 7"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      ) : (
+        <svg
+          viewBox="0 0 20 20"
+          className={cn("size-5 shrink-0", active && "animate-spin")}
+          aria-hidden="true"
+        >
+          <defs>
+            <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#F25430" />
+              <stop offset="50%" stopColor="#F2B035" />
+              <stop offset="100%" stopColor="#FFD700" />
+            </linearGradient>
+          </defs>
+          <circle
+            cx="10"
+            cy="10"
+            r="7.5"
+            fill="none"
+            stroke={`url(#${gradId})`}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeDasharray="28 18"
+          />
+        </svg>
+      )}
+      <span className="text-[14px] leading-6 font-medium text-[#7E7E7E]">
+        {displayText}
+      </span>
+    </div>
+  );
+}
+
 function StageBlock({
   content,
+  isActive,
   compact,
   onTypingTick,
 }: {
@@ -176,6 +245,16 @@ function StageBlock({
   onTypingTick?: () => void;
 }) {
   const { displayText } = useTypewriter(content, onTypingTick);
+
+  if (TICKET_STAGE_RE.test(content)) {
+    return (
+      <TicketLifecyclePill
+        rawContent={content}
+        active={isActive}
+        onTypingTick={onTypingTick}
+      />
+    );
+  }
 
   return (
     <div
