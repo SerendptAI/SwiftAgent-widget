@@ -7,11 +7,35 @@ import {
   useState,
 } from "react";
 
-import { type ChatAttachment, type ChatMsg } from "../components/types";
+import {
+  type ChatAttachment,
+  type ChatMsg,
+  type NavigationGuide,
+  type NavigationStep,
+} from "../components/types";
 import { getBaseUrl } from "../lib/api-client";
 
 const DEFAULT_CHAT_ERROR_TEXT =
   "Sorry, something went wrong. Please try again.";
+
+// Backends may serialize the highlight rect as {x,y,w,h}, {x,y,width,height},
+// {left,top,width,height}, or bbox:[x,y,w,h]. Normalize to {x,y,w,h}.
+function normalizeHighlight(raw: unknown): NavigationStep["highlight"] {
+  if (!raw) return undefined;
+  if (Array.isArray(raw) && raw.length === 4 && raw.every((n) => typeof n === "number")) {
+    return { x: raw[0], y: raw[1], w: raw[2], h: raw[3] };
+  }
+  if (typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  const x = typeof r.x === "number" ? r.x : typeof r.left === "number" ? r.left : undefined;
+  const y = typeof r.y === "number" ? r.y : typeof r.top === "number" ? r.top : undefined;
+  const w = typeof r.w === "number" ? r.w : typeof r.width === "number" ? r.width : undefined;
+  const h = typeof r.h === "number" ? r.h : typeof r.height === "number" ? r.height : undefined;
+  if (x === undefined || y === undefined || w === undefined || h === undefined) {
+    return undefined;
+  }
+  return { x, y, w, h };
+}
 
 interface UseWidgetChatOptions {
   companyId: string;
@@ -214,6 +238,17 @@ export function useWidgetChat({
         });
       };
 
+      const appendNavigation = (guide: NavigationGuide) => {
+        if (!guide.steps?.length) return;
+        updateAgent((m) => {
+          const blocks = m.blocks ?? [];
+          return {
+            ...m,
+            blocks: [...blocks, { kind: "navigation", guide }],
+          };
+        });
+      };
+
       const appendText = (chunk: string) => {
         if (!chunk) return;
         updateAgent((m) => {
@@ -289,6 +324,41 @@ export function useWidgetChat({
               } else if (stage === "stream" && typeof message === "string") {
                 appendText(message);
                 scrollToBottom();
+              } else if (stage === "navigation_guide") {
+                const rawSteps = parsed?.data?.steps;
+                if (Array.isArray(rawSteps) && rawSteps.length > 0) {
+                  const steps: NavigationStep[] = rawSteps
+                    .filter(
+                      (s: unknown): s is Record<string, unknown> =>
+                        !!s && typeof s === "object",
+                    )
+                    .map((s) => ({
+                      step: typeof s.step === "number" ? s.step : 0,
+                      page_title:
+                        typeof s.page_title === "string"
+                          ? s.page_title
+                          : undefined,
+                      instruction:
+                        typeof s.instruction === "string" ? s.instruction : "",
+                      screenshot_url:
+                        typeof s.screenshot_url === "string"
+                          ? s.screenshot_url
+                          : undefined,
+                      highlight:
+                        normalizeHighlight(s.highlight) ??
+                        normalizeHighlight(s.bbox) ??
+                        normalizeHighlight(s.target) ??
+                        normalizeHighlight(s.box),
+                    }))
+                    .filter((s) => s.instruction);
+                  const pathSummary = Array.isArray(parsed?.data?.path_summary)
+                    ? (parsed.data.path_summary as unknown[]).filter(
+                        (p): p is string => typeof p === "string",
+                      )
+                    : undefined;
+                  appendNavigation({ steps, path_summary: pathSummary });
+                  scrollToBottom();
+                }
               } else if (stage === "error") {
                 const errorText =
                   typeof message === "string" && message.trim()
@@ -310,10 +380,12 @@ export function useWidgetChat({
         const fallback = "Sorry, I couldn't generate a response.";
         updateAgent((m) => {
           const blocks = m.blocks ?? [];
-          const hasText = blocks.some((b) => b.kind === "text");
+          const hasContent = blocks.some(
+            (b) => b.kind === "text" || b.kind === "navigation",
+          );
           return {
             ...m,
-            blocks: hasText
+            blocks: hasContent
               ? blocks
               : [...blocks, { kind: "text", content: fallback }],
             pending: false,

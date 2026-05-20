@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import ReactMarkdown from "react-markdown";
 
 import { cn } from "../lib/cn";
@@ -6,7 +14,11 @@ import {
   type AgentBlock,
   type ChatAttachment,
   type ChatMsg,
+  type NavigationStep,
 } from "./types";
+
+export type ImageViewer = (src: string, alt?: string) => void;
+export const ImageViewerContext = createContext<ImageViewer | null>(null);
 
 const TICKET_ID_RE =
   /\*{0,2}Ticket\s+ID:?\*{0,2}\s*\*{0,2}([A-Z0-9-]{4,})\*{0,2}(?=\s|$|[^A-Za-z0-9-])/i;
@@ -147,7 +159,6 @@ function useTypewriter(target: string, onTick?: () => void) {
 
 function StageBlock({
   content,
-  isActive,
   compact,
   onTypingTick,
 }: {
@@ -156,18 +167,15 @@ function StageBlock({
   compact: boolean;
   onTypingTick?: () => void;
 }) {
-  const { displayText, isTyping } = useTypewriter(content, onTypingTick);
-  const showSpinner = isActive || isTyping;
+  const { displayText } = useTypewriter(content, onTypingTick);
 
   return (
     <div
       className={cn(
-        "font-mono flex items-center gap-2 tracking-[0.04em] text-[#000000] uppercase",
+        "font-mono flex items-center gap-2 pl-4 text-black uppercase opacity-60",
         compact ? "text-[11px]" : "text-[12px]",
-        showSpinner ? "opacity-90" : "opacity-50",
       )}
     >
-
       <span className="truncate">{displayText}</span>
     </div>
   );
@@ -193,10 +201,8 @@ function TextBlock({
   return (
     <div
       className={cn(
-        "font-sans min-w-0 max-w-full rounded-[24px] bg-[#F2F8FF] px-4 py-2.5 text-[#006BE5] [overflow-wrap:anywhere]",
-        compact
-          ? "text-[13px] leading-relaxed"
-          : "text-[14px] leading-relaxed",
+        "font-sans min-w-0 max-w-full rounded-3xl bg-[#F2F8FF] px-4 py-2.5 text-[#006BE5] wrap-anywhere",
+        compact ? "text-[13px] leading-[22px]" : "text-[14px] leading-6",
       )}
     >
       {parts ? (
@@ -222,6 +228,136 @@ function TextBlock({
   );
 }
 
+function NavigationStepCard({
+  step,
+  compact,
+}: {
+  step: NavigationStep;
+  compact: boolean;
+}) {
+  const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const highlight = step.highlight;
+  const viewImage = useContext(ImageViewerContext);
+
+  // Cached images may skip onLoad — read dimensions on mount if already complete.
+  useEffect(() => {
+    if (dims) return;
+    const el = imgRef.current;
+    if (el && el.complete && el.naturalWidth > 0) {
+      setDims({ w: el.naturalWidth, h: el.naturalHeight });
+    }
+  }, [dims, step.screenshot_url]);
+
+  const showHighlight =
+    !!highlight && !!dims && dims.w > 0 && dims.h > 0;
+
+  return (
+    <div className="font-sans flex w-full flex-col gap-2">
+      {step.screenshot_url ? (
+        <button
+          type="button"
+          onClick={() =>
+            viewImage?.(step.screenshot_url!, `Step ${step.step}`)
+          }
+          className="group relative block w-full cursor-zoom-in overflow-hidden rounded-[10px] bg-white text-left"
+          aria-label={`View screenshot for step ${step.step}`}
+        >
+          <img
+            ref={imgRef}
+            src={step.screenshot_url}
+            alt={`Step ${step.step}`}
+            className="block h-auto w-full"
+            onLoad={(e) => {
+              const target = e.currentTarget;
+              setDims({
+                w: target.naturalWidth,
+                h: target.naturalHeight,
+              });
+            }}
+          />
+          {showHighlight && highlight ? (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute rounded-md border-2 border-[#E93333] shadow-[0_0_0_4px_rgba(233,51,51,0.18)]"
+              style={{
+                left: `${(highlight.x / dims!.w) * 100}%`,
+                top: `${(highlight.y / dims!.h) * 100}%`,
+                width: `${(highlight.w / dims!.w) * 100}%`,
+                height: `${(highlight.h / dims!.h) * 100}%`,
+              }}
+            />
+          ) : null}
+          <span className="pointer-events-none absolute top-[7px] right-[7px] flex h-[33px] w-[33px] items-center justify-center rounded-full bg-white/90 text-black shadow-[0_2px_6px_rgba(0,0,0,0.12)] backdrop-blur-sm transition group-hover:scale-105 group-hover:bg-white">
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              className="h-4 w-4"
+              aria-hidden="true"
+            >
+              <path
+                d="M4 7.5V5.5A1.5 1.5 0 0 1 5.5 4h2M12.5 4h2A1.5 1.5 0 0 1 16 5.5v2M16 12.5v2a1.5 1.5 0 0 1-1.5 1.5h-2M7.5 16h-2A1.5 1.5 0 0 1 4 14.5v-2"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+        </button>
+      ) : null}
+
+      {step.instruction ? (
+        <p
+          className={cn(
+            "text-[#0F1626]/80 wrap-anywhere",
+            compact ? "text-[12px] leading-snug" : "text-[13px] leading-relaxed",
+          )}
+        >
+          {step.instruction}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function NavigationBlock({
+  steps,
+  pathSummary,
+  compact,
+}: {
+  steps: NavigationStep[];
+  pathSummary?: string[];
+  compact: boolean;
+}) {
+  return (
+    <div className="flex w-full min-w-0 flex-col gap-2">
+      {pathSummary && pathSummary.length > 0 ? (
+        <div
+          className={cn(
+            "font-mono flex flex-wrap items-center gap-1 tracking-[0.04em] text-[#006BE5]/70 uppercase",
+            compact ? "text-[10px]" : "text-[11px]",
+          )}
+        >
+          {pathSummary.map((page, i) => (
+            <span key={`${i}-${page}`} className="flex items-center gap-1">
+              <span className="truncate">{page}</span>
+              {i < pathSummary.length - 1 ? <span>›</span> : null}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      {steps.map((step, i) => (
+        <NavigationStepCard
+          key={`${step.step}-${i}`}
+          step={step}
+          compact={compact}
+        />
+      ))}
+    </div>
+  );
+}
+
 const AgentMessage = memo(function AgentMessage({
   msg,
   compact,
@@ -236,19 +372,32 @@ const AgentMessage = memo(function AgentMessage({
   const lastIndex = blocks.length - 1;
 
   return (
-    <div className="flex max-w-[90%] min-w-0 flex-col items-start gap-2">
+    <div className="flex max-w-[90%] min-w-0 flex-col items-start gap-3">
       {blocks.map((block, i) => {
         const isActive = !!msg.pending && i === lastIndex;
         const key = `${i}-${block.kind}`;
-        return block.kind === "stage" ? (
-          <StageBlock
-            key={key}
-            content={block.content}
-            isActive={isActive}
-            compact={compact}
-            onTypingTick={onTypingTick}
-          />
-        ) : (
+        if (block.kind === "stage") {
+          return (
+            <StageBlock
+              key={key}
+              content={block.content}
+              isActive={isActive}
+              compact={compact}
+              onTypingTick={onTypingTick}
+            />
+          );
+        }
+        if (block.kind === "navigation") {
+          return (
+            <NavigationBlock
+              key={key}
+              steps={block.guide.steps}
+              pathSummary={block.guide.path_summary}
+              compact={compact}
+            />
+          );
+        }
+        return (
           <TextBlock
             key={key}
             content={block.content}
@@ -275,6 +424,8 @@ export function ChatMessageList({
   compact = false,
 }: ChatMessageListProps) {
   const scrollPendingRef = useRef(false);
+  const viewImage = useContext(ImageViewerContext);
+
   // Stable identity so memo'd <AgentMessage> doesn't re-render on every
   // parent render; rAF-coalesced so N concurrent typewriters scroll once
   // per frame instead of N times.
@@ -320,12 +471,19 @@ export function ChatMessageList({
                 >
                   {msg.attachments.map((file) =>
                     file.kind === "image" ? (
-                      <img
+                      <button
+                        type="button"
                         key={file.id}
-                        src={file.url}
-                        alt={file.name}
-                        className="max-h-40 w-56 rounded-lg object-cover"
-                      />
+                        onClick={() => viewImage?.(file.url, file.name)}
+                        className="cursor-zoom-in"
+                        aria-label={`View ${file.name}`}
+                      >
+                        <img
+                          src={file.url}
+                          alt={file.name}
+                          className="max-h-40 w-56 rounded-lg object-cover"
+                        />
+                      </button>
                     ) : (
                       <div
                         key={file.id}
@@ -346,11 +504,11 @@ export function ChatMessageList({
               {msg.text ? (
                 <div
                   className={cn(
-                    "min-w-0 max-w-full rounded-[24px] bg-[#006BE5] px-4 py-2.5 text-white",
-                    compact ? "text-[12px]" : "text-[13px]",
+                    "min-w-0 max-w-full rounded-3xl bg-[#006BE5] px-4 py-2.5 text-white",
+                    compact ? "text-[13px] leading-[22px]" : "text-[14px] leading-6",
                   )}
                 >
-                  <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+                  <p className="whitespace-pre-wrap wrap-anywhere">
                     {msg.text}
                   </p>
                 </div>
