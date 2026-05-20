@@ -249,17 +249,22 @@ export function HighlightOverlay({
   const maskId = `spot-${reactId}`;
   const arrowId = `arrow-${reactId}`;
 
-  // Center + radii of the spotlight oval. Pad the bbox so the bright area
-  // breathes a bit around small targets like sidebar items.
-  const cx = highlight.x + highlight.w / 2;
-  const cy = highlight.y + highlight.h / 2;
-  const rx = Math.max(highlight.w * 0.7, Math.min(40, imgW * 0.08));
-  const ry = Math.max(highlight.h * 0.85, Math.min(28, imgH * 0.06));
+  // Padded rectangle around the bbox so the spotlight breathes a bit around
+  // small targets like buttons.
+  const padX = Math.max(highlight.w * 0.08, 6);
+  const padY = Math.max(highlight.h * 0.18, 6);
+  const rectX = Math.max(highlight.x - padX, 0);
+  const rectY = Math.max(highlight.y - padY, 0);
+  const rectW = Math.min(highlight.w + padX * 2, imgW - rectX);
+  const rectH = Math.min(highlight.h + padY * 2, imgH - rectY);
+  const cx = rectX + rectW / 2;
+  const cy = rectY + rectH / 2;
+  const cornerR = Math.min(8, Math.min(rectW, rectH) * 0.18);
 
   // Pick whichever corner is farther from the target so the arrow doesn't
   // start off-image. Default origin is upper-right.
   const fromRight = cx < imgW * 0.55;
-  const sideX = fromRight ? cx + rx + 12 : cx - rx - 12;
+  const sideX = fromRight ? rectX + rectW + 12 : rectX - 12;
   const endY = cy;
   const startX = fromRight
     ? Math.min(sideX + Math.min(110, imgW * 0.22), imgW - 12)
@@ -280,7 +285,15 @@ export function HighlightOverlay({
       <defs>
         <mask id={maskId} maskUnits="userSpaceOnUse">
           <rect width={imgW} height={imgH} fill="white" />
-          <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill="black" />
+          <rect
+            x={rectX}
+            y={rectY}
+            width={rectW}
+            height={rectH}
+            rx={cornerR}
+            ry={cornerR}
+            fill="black"
+          />
         </mask>
         <marker
           id={arrowId}
