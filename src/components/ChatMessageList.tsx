@@ -19,7 +19,13 @@ import {
   type NavigationStep,
 } from "./types";
 
-export type ImageViewer = (src: string, alt?: string) => void;
+export interface ImageViewerOptions {
+  src: string;
+  alt?: string;
+  highlight?: NavigationHighlight;
+  naturalDims?: { w: number; h: number };
+}
+export type ImageViewer = (opts: ImageViewerOptions) => void;
 export const ImageViewerContext = createContext<ImageViewer | null>(null);
 
 const TICKET_ID_RE =
@@ -230,7 +236,7 @@ function TextBlock({
   );
 }
 
-function HighlightOverlay({
+export function HighlightOverlay({
   highlight,
   imgW,
   imgH,
@@ -336,7 +342,12 @@ function NavigationStepCard({
         <button
           type="button"
           onClick={() =>
-            viewImage?.(step.screenshot_url!, `Step ${step.step}`)
+            viewImage?.({
+              src: step.screenshot_url!,
+              alt: `Step ${step.step}`,
+              highlight,
+              naturalDims: dims ?? undefined,
+            })
           }
           className="group relative block w-full cursor-zoom-in overflow-hidden rounded-[10px] bg-white text-left"
           aria-label={`View screenshot for step ${step.step}`}
@@ -547,7 +558,9 @@ export function ChatMessageList({
                       <button
                         type="button"
                         key={file.id}
-                        onClick={() => viewImage?.(file.url, file.name)}
+                        onClick={() =>
+                          viewImage?.({ src: file.url, alt: file.name })
+                        }
                         className="cursor-zoom-in"
                         aria-label={`View ${file.name}`}
                       >

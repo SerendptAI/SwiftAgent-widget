@@ -15,8 +15,10 @@ import { BriggsFace } from "./components/BriggsFace";
 import { ChatInput } from "./components/ChatInput";
 import {
   ChatMessageList,
+  HighlightOverlay,
   type ImageViewer,
   ImageViewerContext,
+  type ImageViewerOptions,
 } from "./components/ChatMessageList";
 
 import { usePublicCompanyQuery } from "./hooks/use-public-company";
@@ -174,12 +176,11 @@ function WidgetContent({
   // so the overlay renders outside the chat panel, which uses transform via
   // widget-slide-up and would otherwise act as the containing block for
   // fixed-positioned descendants, clipping the overlay to the panel.
-  const [viewedImage, setViewedImage] = useState<{
-    src: string;
-    alt?: string;
-  } | null>(null);
-  const openImage = useCallback<ImageViewer>((src, alt) => {
-    setViewedImage({ src, alt });
+  const [viewedImage, setViewedImage] = useState<ImageViewerOptions | null>(
+    null,
+  );
+  const openImage = useCallback<ImageViewer>((opts) => {
+    setViewedImage(opts);
   }, []);
   const closeImage = useCallback(() => setViewedImage(null), []);
 
@@ -339,12 +340,23 @@ function WidgetContent({
               />
             </svg>
           </button>
-          <img
-            src={viewedImage.src}
-            alt={viewedImage.alt || ""}
+          <div
             onClick={(e) => e.stopPropagation()}
-            className="max-h-full max-w-full rounded-lg object-contain"
-          />
+            className="relative inline-block overflow-hidden rounded-lg"
+          >
+            <img
+              src={viewedImage.src}
+              alt={viewedImage.alt || ""}
+              className="block max-h-[90vh] max-w-[90vw]"
+            />
+            {viewedImage.highlight && viewedImage.naturalDims ? (
+              <HighlightOverlay
+                highlight={viewedImage.highlight}
+                imgW={viewedImage.naturalDims.w}
+                imgH={viewedImage.naturalDims.h}
+              />
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>
