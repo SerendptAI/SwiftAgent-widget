@@ -338,6 +338,17 @@ function NavigationStepCard({
 
   return (
     <div className="font-sans flex w-full flex-col gap-2">
+      {step.page_title ? (
+        <div
+          className={cn(
+            "font-mono flex items-center gap-1.5 text-[#006BE5] uppercase",
+            compact ? "text-[11px]" : "text-[12px]",
+          )}
+        >
+          <span className="truncate">{step.page_title}</span>
+          <span aria-hidden="true">›</span>
+        </div>
+      ) : null}
       {step.screenshot_url ? (
         <button
           type="button"
@@ -407,7 +418,6 @@ function NavigationStepCard({
 
 function NavigationBlock({
   steps,
-  pathSummary,
   compact,
 }: {
   steps: NavigationStep[];
@@ -415,22 +425,7 @@ function NavigationBlock({
   compact: boolean;
 }) {
   return (
-    <div className="flex w-full min-w-0 flex-col gap-2">
-      {pathSummary && pathSummary.length > 0 ? (
-        <div
-          className={cn(
-            "font-mono flex flex-wrap items-center gap-1 tracking-[0.04em] text-[#006BE5]/70 uppercase",
-            compact ? "text-[10px]" : "text-[11px]",
-          )}
-        >
-          {pathSummary.map((page, i) => (
-            <span key={`${i}-${page}`} className="flex items-center gap-1">
-              <span className="truncate">{page}</span>
-              {i < pathSummary.length - 1 ? <span>›</span> : null}
-            </span>
-          ))}
-        </div>
-      ) : null}
+    <div className="flex w-full min-w-0 flex-col gap-4">
       {steps.map((step, i) => (
         <NavigationStepCard
           key={`${step.step}-${i}`}

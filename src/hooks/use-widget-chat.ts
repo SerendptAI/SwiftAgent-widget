@@ -238,6 +238,58 @@ export function useWidgetChat({
         });
       };
 
+      // Pace stage reveals so a burst of "thinking" events doesn't dump
+      // every row at once. Min 400ms between appends; remaining queue
+      // flushes immediately when text/navigation arrives so ordering
+      // matches the stream.
+      const STAGE_MIN_INTERVAL_MS = 400;
+      const stageQueue: string[] = [];
+      let stageTimer: number | null = null;
+      let lastStageAt = 0;
+
+      const drainStageQueue = () => {
+        stageTimer = null;
+        if (stageQueue.length === 0) return;
+        const elapsed = Date.now() - lastStageAt;
+        if (elapsed < STAGE_MIN_INTERVAL_MS) {
+          stageTimer = window.setTimeout(
+            drainStageQueue,
+            STAGE_MIN_INTERVAL_MS - elapsed,
+          );
+          return;
+        }
+        const next = stageQueue.shift()!;
+        appendStage(next);
+        lastStageAt = Date.now();
+        scrollToBottom();
+        if (stageQueue.length > 0) {
+          stageTimer = window.setTimeout(
+            drainStageQueue,
+            STAGE_MIN_INTERVAL_MS,
+          );
+        }
+      };
+
+      const enqueueStage = (label: string) => {
+        const trimmed = label.trim();
+        if (!trimmed) return;
+        const lastQueued = stageQueue[stageQueue.length - 1];
+        if (lastQueued === trimmed) return;
+        stageQueue.push(trimmed);
+        if (stageTimer === null) drainStageQueue();
+      };
+
+      const flushPendingStages = () => {
+        if (stageTimer !== null) {
+          window.clearTimeout(stageTimer);
+          stageTimer = null;
+        }
+        while (stageQueue.length > 0) {
+          appendStage(stageQueue.shift()!);
+        }
+        lastStageAt = Date.now();
+      };
+
       const appendNavigation = (guide: NavigationGuide) => {
         if (!guide.steps?.length) return;
         updateAgent((m) => {
@@ -313,15 +365,14 @@ export function useWidgetChat({
               const message = parsed?.data?.message;
 
               if (stage === "thinking" && typeof message === "string") {
-                appendStage(message);
-                scrollToBottom();
+                enqueueStage(message);
               } else if (stage === "tool") {
                 const label = parsed?.data?.label;
                 if (typeof label === "string") {
-                  appendStage(label);
-                  scrollToBottom();
+                  enqueueStage(label);
                 }
               } else if (stage === "stream" && typeof message === "string") {
+                flushPendingStages();
                 appendText(message);
                 scrollToBottom();
               } else if (stage === "navigation_guide") {
@@ -356,6 +407,7 @@ export function useWidgetChat({
                         (p): p is string => typeof p === "string",
                       )
                     : undefined;
+                  flushPendingStages();
                   appendNavigation({ steps, path_summary: pathSummary });
                   scrollToBottom();
                 }
@@ -364,6 +416,7 @@ export function useWidgetChat({
                   typeof message === "string" && message.trim()
                     ? message
                     : DEFAULT_CHAT_ERROR_TEXT;
+                flushPendingStages();
                 replaceWithError(errorText);
                 scrollToBottom();
               }
@@ -405,6 +458,7 @@ export function useWidgetChat({
           time: now,
         }));
       } finally {
+        flushPendingStages();
         setIsChatLoading(false);
       }
     },
