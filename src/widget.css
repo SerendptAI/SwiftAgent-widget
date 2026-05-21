@@ -218,6 +218,48 @@
     forwards;
 }
 
+@keyframes widget-stage-shimmer {
+  0% {
+    background-position: 150% 0;
+  }
+  100% {
+    background-position: -150% 0;
+  }
+}
+
+.widget-stage-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.35) 0%,
+    rgba(0, 0, 0, 0.35) 40%,
+    rgba(0, 0, 0, 0.95) 50%,
+    rgba(0, 0, 0, 0.35) 60%,
+    rgba(0, 0, 0, 0.35) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: widget-stage-shimmer 1.8s linear infinite;
+}
+
+@keyframes widget-stage-dot {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+.widget-stage-dot {
+  animation: widget-stage-dot 1.1s ease-in-out infinite;
+}
+
 .scrollbar-none {
   scrollbar-width: none;
 }

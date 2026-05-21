@@ -244,8 +244,6 @@ function StageBlock({
   compact: boolean;
   onTypingTick?: () => void;
 }) {
-  const { displayText } = useTypewriter(content, onTypingTick);
-
   if (TICKET_STAGE_RE.test(content)) {
     return (
       <TicketLifecyclePill
@@ -257,13 +255,78 @@ function StageBlock({
   }
 
   return (
+    <SwapStageText
+      content={content}
+      isActive={isActive}
+      compact={compact}
+      onTypingTick={onTypingTick}
+    />
+  );
+}
+
+function SwapStageText({
+  content,
+  isActive,
+  compact,
+  onTypingTick,
+}: {
+  content: string;
+  isActive: boolean;
+  compact: boolean;
+  onTypingTick?: () => void;
+}) {
+  const [shown, setShown] = useState(content);
+  const [visible, setVisible] = useState(false);
+  const onTickRef = useRef(onTypingTick);
+  onTickRef.current = onTypingTick;
+
+  // Fade in on mount.
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => setVisible(true));
+    return () => window.cancelAnimationFrame(id);
+  }, []);
+
+  // When the label changes, fade the old word out, swap in the new one,
+  // fade it back in — so consecutive stages read as one word replacing
+  // another instead of stacking as new rows.
+  useEffect(() => {
+    if (content === shown) return;
+    setVisible(false);
+    const t = window.setTimeout(() => {
+      setShown(content);
+      setVisible(true);
+      onTickRef.current?.();
+    }, 180);
+    return () => window.clearTimeout(t);
+  }, [content, shown]);
+
+  return (
     <div
       className={cn(
-        "font-mono flex items-center gap-2 pl-4 text-black uppercase opacity-60",
+        "font-mono flex items-center gap-2 pl-4 uppercase transition-all duration-200 ease-out",
+        isActive ? "text-black" : "text-black/60",
         compact ? "text-[11px]" : "text-[12px]",
       )}
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(-4px)",
+      }}
     >
-      <span className="truncate">{displayText}</span>
+      <span
+        aria-hidden="true"
+        className={cn(
+          "inline-block size-1.5 shrink-0 rounded-full bg-current",
+          isActive && "widget-stage-dot",
+        )}
+      />
+      <span
+        className={cn(
+          "truncate",
+          isActive && "widget-stage-shimmer",
+        )}
+      >
+        {shown}
+      </span>
     </div>
   );
 }

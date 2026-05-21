@@ -269,10 +269,26 @@ export function useWidgetChat({
 
         updateAgent((m) => {
           const blocks = m.blocks ?? [];
-          const last = blocks[blocks.length - 1];
-          // Skip consecutive duplicate stages so repeated heartbeats don't
-          // produce duplicate rows in the log.
-          if (last?.kind === "stage" && last.content === trimmed) return null;
+          // Non-ticket stages collapse into a single in-place block whose
+          // content swaps as new labels arrive — so the UI reads as one
+          // status word replacing another, not a growing log of rows.
+          let stageIdx = -1;
+          for (let i = blocks.length - 1; i >= 0; i--) {
+            const b = blocks[i];
+            if (b.kind === "stage" && !TICKET_STAGE_RE.test(b.content)) {
+              stageIdx = i;
+              break;
+            }
+          }
+          if (stageIdx >= 0) {
+            const existing = blocks[stageIdx];
+            if (existing.kind === "stage" && existing.content === trimmed) {
+              return null;
+            }
+            const next = [...blocks];
+            next[stageIdx] = { kind: "stage", content: trimmed };
+            return { ...m, blocks: next };
+          }
           return {
             ...m,
             blocks: [...blocks, { kind: "stage", content: trimmed }],
