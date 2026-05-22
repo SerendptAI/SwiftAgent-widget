@@ -57,6 +57,8 @@ interface UseWidgetChatReturn {
   chatScrollRef: RefObject<HTMLDivElement | null>;
   handleSendChat: () => void;
   sendMessage: (text: string) => void;
+  hasRevealed: (id: number) => boolean;
+  markRevealed: (id: number) => void;
 }
 
 export function useWidgetChat({
@@ -79,6 +81,19 @@ export function useWidgetChat({
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const chatSessionId = useMemo(() => crypto.randomUUID(), []);
+
+  // Agent messages whose reveal (typewriter / stage fade) has already played
+  // to completion. The chat panel unmounts when the widget closes, so this
+  // ref — which lives above that unmount — is what lets a reopened widget show
+  // past responses fully typed instead of replaying their animation.
+  const revealedMessageIdsRef = useRef<Set<number>>(new Set());
+  const hasRevealed = useCallback(
+    (id: number) => revealedMessageIdsRef.current.has(id),
+    [],
+  );
+  const markRevealed = useCallback((id: number) => {
+    revealedMessageIdsRef.current.add(id);
+  }, []);
 
   const chatInputRef = useRef(chatInput);
   chatInputRef.current = chatInput;
@@ -546,5 +561,7 @@ export function useWidgetChat({
     chatScrollRef,
     handleSendChat,
     sendMessage,
+    hasRevealed,
+    markRevealed,
   };
 }

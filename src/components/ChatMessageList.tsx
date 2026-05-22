@@ -127,16 +127,36 @@ interface ChatMessageListProps {
   chatEndRef: React.RefObject<HTMLDivElement | null>;
   footer?: React.ReactNode;
   compact?: boolean;
+  // Reveal tracking that survives the chat panel unmounting; without it every
+  // past response replays its typewriter each time the widget is reopened.
+  hasRevealed?: (id: number) => boolean;
+  markRevealed?: (id: number) => void;
 }
+
+// Stable fallbacks so the defaults don't change identity per render (which
+// would defeat the memo on AgentMessage). With no tracking supplied, messages
+// simply always animate — the previous behaviour.
+const ALWAYS_ANIMATE = () => false;
+const IGNORE_REVEAL = () => {};
 
 interface AgentMessageProps {
   msg: ChatMsg;
   compact: boolean;
   onTypingTick?: () => void;
+  hasRevealed: (id: number) => boolean;
+  markRevealed: (id: number) => void;
 }
 
-function useTypewriter(target: string, onTick?: () => void) {
-  const [displayedLength, setDisplayedLength] = useState(0);
+function useTypewriter(
+  target: string,
+  { revealed = false, onTick }: { revealed?: boolean; onTick?: () => void } = {},
+) {
+  // When the message has already been revealed (e.g. the widget was closed and
+  // reopened), start fully typed so the typewriter doesn't replay. `revealed`
+  // is only read on mount — later flips never restart or snap the animation.
+  const [displayedLength, setDisplayedLength] = useState(() =>
+    revealed ? target.length : 0,
+  );
   const onTickRef = useRef(onTick);
   onTickRef.current = onTick;
   const targetLength = target.length;
@@ -172,14 +192,16 @@ function TicketLifecyclePill({
   rawContent,
   active,
   onTypingTick,
+  revealed = false,
 }: {
   rawContent: string;
   active: boolean;
   onTypingTick?: () => void;
+  revealed?: boolean;
 }) {
   const created = TICKET_CREATED_RE.test(rawContent);
   const target = created ? "Ticket created" : "Creating ticket...";
-  const { displayText } = useTypewriter(target, onTypingTick);
+  const { displayText } = useTypewriter(target, { revealed, onTick: onTypingTick });
   const gradId = `ticket-spin-${useId().replace(/:/g, "")}`;
 
   return (
@@ -238,11 +260,13 @@ function StageBlock({
   isActive,
   compact,
   onTypingTick,
+  revealed = false,
 }: {
   content: string;
   isActive: boolean;
   compact: boolean;
   onTypingTick?: () => void;
+  revealed?: boolean;
 }) {
   if (TICKET_STAGE_RE.test(content)) {
     return (
@@ -250,6 +274,7 @@ function StageBlock({
         rawContent={content}
         active={isActive}
         onTypingTick={onTypingTick}
+        revealed={revealed}
       />
     );
   }
@@ -260,6 +285,7 @@ function StageBlock({
       isActive={isActive}
       compact={compact}
       onTypingTick={onTypingTick}
+      revealed={revealed}
     />
   );
 }
@@ -269,14 +295,18 @@ function SwapStageText({
   isActive,
   compact,
   onTypingTick,
+  revealed = false,
 }: {
   content: string;
   isActive: boolean;
   compact: boolean;
   onTypingTick?: () => void;
+  revealed?: boolean;
 }) {
   const [shown, setShown] = useState(content);
-  const [visible, setVisible] = useState(false);
+  // Already-revealed stages (e.g. after reopening the widget) start visible so
+  // they don't replay the fade-in.
+  const [visible, setVisible] = useState(revealed);
   const onTickRef = useRef(onTypingTick);
   onTickRef.current = onTypingTick;
 
@@ -336,13 +366,18 @@ function TextBlock({
   isActive,
   compact,
   onTypingTick,
+  revealed = false,
 }: {
   content: string;
   isActive: boolean;
   compact: boolean;
   onTypingTick?: () => void;
+  revealed?: boolean;
 }) {
-  const { displayText, isTyping } = useTypewriter(content, onTypingTick);
+  const { displayText, isTyping } = useTypewriter(content, {
+    revealed,
+    onTick: onTypingTick,
+  });
   // Hold the ticket badge until the full message is in — extracting from a
   // partial string would flash partial IDs.
   const settled = !isTyping && !isActive;
@@ -596,6 +631,8 @@ const AgentMessage = memo(function AgentMessage({
   msg,
   compact,
   onTypingTick,
+  hasRevealed,
+  markRevealed,
 }: AgentMessageProps) {
   const blocks: AgentBlock[] =
     msg.blocks && msg.blocks.length > 0
@@ -604,6 +641,16 @@ const AgentMessage = memo(function AgentMessage({
         ? [{ kind: "text", content: msg.text }]
         : [];
   const lastIndex = blocks.length - 1;
+
+  // Captured once at mount: was this message already fully revealed before this
+  // mount? If so, its blocks render instantly instead of re-animating.
+  const revealed = useRef(hasRevealed(msg.id)).current;
+
+  // Once the response is no longer streaming, record it as revealed so a future
+  // remount (close → reopen) shows it fully typed rather than replaying.
+  useEffect(() => {
+    if (!msg.pending) markRevealed(msg.id);
+  }, [msg.pending, msg.id, markRevealed]);
 
   return (
     <div className="flex max-w-[90%] min-w-0 flex-col items-start gap-3">
@@ -618,6 +665,7 @@ const AgentMessage = memo(function AgentMessage({
               isActive={isActive}
               compact={compact}
               onTypingTick={onTypingTick}
+              revealed={revealed}
             />
           );
         }
@@ -638,6 +686,7 @@ const AgentMessage = memo(function AgentMessage({
             isActive={isActive}
             compact={compact}
             onTypingTick={onTypingTick}
+            revealed={revealed}
           />
         );
       })}
@@ -656,6 +705,8 @@ export function ChatMessageList({
   chatEndRef,
   footer,
   compact = false,
+  hasRevealed = ALWAYS_ANIMATE,
+  markRevealed = IGNORE_REVEAL,
 }: ChatMessageListProps) {
   const scrollPendingRef = useRef(false);
   const viewImage = useContext(ImageViewerContext);
@@ -688,6 +739,8 @@ export function ChatMessageList({
               msg={msg}
               compact={compact}
               onTypingTick={handleTypingTick}
+              hasRevealed={hasRevealed}
+              markRevealed={markRevealed}
             />
           ) : (
             <div
