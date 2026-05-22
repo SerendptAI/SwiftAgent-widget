@@ -244,22 +244,6 @@
   animation: widget-stage-shimmer 1.8s linear infinite;
 }
 
-@keyframes widget-stage-dot {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: scale(0.85);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.1);
-  }
-}
-
-.widget-stage-dot {
-  animation: widget-stage-dot 1.1s ease-in-out infinite;
-}
-
 .scrollbar-none {
   scrollbar-width: none;
 }

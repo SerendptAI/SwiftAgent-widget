@@ -127,15 +127,10 @@ interface ChatMessageListProps {
   chatEndRef: React.RefObject<HTMLDivElement | null>;
   footer?: React.ReactNode;
   compact?: boolean;
-  // Reveal tracking that survives the chat panel unmounting; without it every
-  // past response replays its typewriter each time the widget is reopened.
   hasRevealed?: (id: number) => boolean;
   markRevealed?: (id: number) => void;
 }
 
-// Stable fallbacks so the defaults don't change identity per render (which
-// would defeat the memo on AgentMessage). With no tracking supplied, messages
-// simply always animate — the previous behaviour.
 const ALWAYS_ANIMATE = () => false;
 const IGNORE_REVEAL = () => {};
 
@@ -160,8 +155,6 @@ function useTypewriter(
   const onTickRef = useRef(onTick);
   onTickRef.current = onTick;
   const targetLength = target.length;
-  // Depend on the boolean rather than `displayedLength` so the interval is
-  // only torn down on the catch-up/grow transitions, not every tick.
   const needsTyping = displayedLength < targetLength;
 
   useEffect(() => {
@@ -284,7 +277,6 @@ function StageBlock({
       content={content}
       isActive={isActive}
       compact={compact}
-      onTypingTick={onTypingTick}
       revealed={revealed}
     />
   );
@@ -294,21 +286,17 @@ function SwapStageText({
   content,
   isActive,
   compact,
-  onTypingTick,
   revealed = false,
 }: {
   content: string;
   isActive: boolean;
   compact: boolean;
-  onTypingTick?: () => void;
   revealed?: boolean;
 }) {
   const [shown, setShown] = useState(content);
   // Already-revealed stages (e.g. after reopening the widget) start visible so
   // they don't replay the fade-in.
   const [visible, setVisible] = useState(revealed);
-  const onTickRef = useRef(onTypingTick);
-  onTickRef.current = onTypingTick;
 
   // Fade in on mount.
   useEffect(() => {
@@ -316,16 +304,12 @@ function SwapStageText({
     return () => window.cancelAnimationFrame(id);
   }, []);
 
-  // When the label changes, fade the old word out, swap in the new one,
-  // fade it back in — so consecutive stages read as one word replacing
-  // another instead of stacking as new rows.
   useEffect(() => {
     if (content === shown) return;
     setVisible(false);
     const t = window.setTimeout(() => {
       setShown(content);
       setVisible(true);
-      onTickRef.current?.();
     }, 180);
     return () => window.clearTimeout(t);
   }, [content, shown]);
@@ -333,22 +317,13 @@ function SwapStageText({
   return (
     <div
       className={cn(
-        "font-mono flex items-center gap-2 pl-4 uppercase transition-all duration-200 ease-out",
+        "font-mono flex items-center gap-2 pl-4 uppercase transition-opacity duration-200 ease-out",
         isActive ? "text-black" : "text-black/60",
         compact ? "text-[11px]" : "text-[12px]",
       )}
-      style={{
-        opacity: visible ? 1 : 0,
-        transform: visible ? "translateY(0)" : "translateY(-4px)",
-      }}
+      style={{ opacity: visible ? 1 : 0 }}
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "inline-block size-1.5 shrink-0 rounded-full bg-current",
-          isActive && "widget-stage-dot",
-        )}
-      />
+     
       <span
         className={cn(
           "truncate",
