@@ -12,6 +12,7 @@ import {
   TICKET_STAGE_RE,
 } from "../components/ChatMessageList";
 import {
+  type AgentBlock,
   type ChatAttachment,
   type ChatMsg,
   type NavigationGuide,
@@ -363,10 +364,19 @@ export function useWidgetChat({
         lastStageAt = Date.now();
       };
 
+      // Once the real answer (text or navigation) arrives, drop the transient
+      // "thinking" stage rows — they were only progress indicators while we
+      // waited. Ticket lifecycle pills are kept since they're a meaningful
+      // final state, not throwaway progress.
+      const dropTransientStages = (blocks: AgentBlock[] = []) =>
+        blocks.filter(
+          (b) => b.kind !== "stage" || TICKET_STAGE_RE.test(b.content),
+        );
+
       const appendNavigation = (guide: NavigationGuide) => {
         if (!guide.steps?.length) return;
         updateAgent((m) => {
-          const blocks = m.blocks ?? [];
+          const blocks = dropTransientStages(m.blocks);
           return {
             ...m,
             blocks: [...blocks, { kind: "navigation", guide }],
@@ -377,7 +387,7 @@ export function useWidgetChat({
       const appendText = (chunk: string) => {
         if (!chunk) return;
         updateAgent((m) => {
-          const blocks = m.blocks ?? [];
+          const blocks = dropTransientStages(m.blocks);
           const last = blocks[blocks.length - 1];
           if (last?.kind === "text") {
             const merged = blocks.slice(0, -1);
@@ -511,9 +521,14 @@ export function useWidgetChat({
           );
           return {
             ...m,
+            // No real answer landed — the fallback line becomes the response,
+            // so the transient thinking stages drop off here too.
             blocks: hasContent
               ? blocks
-              : [...blocks, { kind: "text", content: fallback }],
+              : [
+                  ...dropTransientStages(blocks),
+                  { kind: "text", content: fallback },
+                ],
             pending: false,
             time: now,
           };
