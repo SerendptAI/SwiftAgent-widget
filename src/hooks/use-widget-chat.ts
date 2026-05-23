@@ -416,6 +416,7 @@ export function useWidgetChat({
           body: JSON.stringify({
             session_id: chatSessionId,
             message: backendText,
+            page_url: window.location.href,
           }),
         });
 
