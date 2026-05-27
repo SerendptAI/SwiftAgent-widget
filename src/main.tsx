@@ -107,14 +107,17 @@ function WidgetContent({
   const [bubbleIndex, setBubbleIndex] = useState(0);
   const [bubbleVisible, setBubbleVisible] = useState(false);
   const [bubbleAnimating, setBubbleAnimating] = useState(false);
-  const bubbleQuestions = useMemo(
-    () => [
+  const bubbleQuestions = useMemo(() => {
+    const configured = company?.suggested_ai_prompts?.filter(
+      (q): q is string => typeof q === "string" && q.trim().length > 0,
+    );
+    if (configured && configured.length > 0) return configured;
+    return [
       `What is ${companyName || "this company"} about`,
       "Whats the pricing like?",
       "Are you looking for support?",
-    ],
-    [companyName],
-  );
+    ];
+  }, [company?.suggested_ai_prompts, companyName]);
 
   // Rotate prompt bubble: hidden initially, then show/hide in cycles with pauses
   useEffect(() => {
