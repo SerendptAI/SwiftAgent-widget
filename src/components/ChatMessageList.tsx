@@ -353,8 +353,7 @@ function TextBlock({
     revealed,
     onTick: onTypingTick,
   });
-  // Hold the ticket badge until the full message is in — extracting from a
-  // partial string would flash partial IDs.
+ 
   const settled = !isTyping && !isActive;
   const parts = settled ? extractTicketId(displayText) : null;
 
