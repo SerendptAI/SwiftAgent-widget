@@ -181,6 +181,68 @@ function useTypewriter(
 export const TICKET_STAGE_RE = /(creating.*ticket|ticket.*(created|success))/i;
 export const TICKET_CREATED_RE = /ticket.*(created|success)/i;
 
+function formatDuration(ms: number) {
+  if (ms < 1000) return "<1s";
+  const totalSec = Math.round(ms / 1000);
+  if (totalSec < 60) return `${totalSec}s`;
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  if (min < 60) return sec === 0 ? `${min}m` : `${min}m ${sec}s`;
+  const hr = Math.floor(min / 60);
+  const remMin = min % 60;
+  return remMin === 0 ? `${hr}h` : `${hr}h ${remMin}m`;
+}
+
+function DurationLabel({ ms, compact }: { ms: number; compact: boolean }) {
+  return (
+    <div
+      className={cn(
+        "font-mono flex items-center gap-1.5 text-black/60 uppercase",
+        compact ? "text-[11px]" : "text-[12px]",
+      )}
+    >
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        className="size-4 shrink-0"
+        aria-hidden="true"
+      >
+        <path
+          d="M10 1.33333H6.66667"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M2.66667 9C2.66667 5.87039 5.20372 3.33333 8.33333 3.33333C9.89813 3.33333 11.3148 3.96759 12.3403 4.99306M12.3403 4.99306C13.3657 6.01853 14 7.4352 14 9C14 12.1296 11.4629 14.6667 8.33333 14.6667H2M12.3403 4.99306L13.3333 4"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M5.33333 12.6667H2"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M4 10.6667H2"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M8.33333 9L10.6667 6.66667"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span>{formatDuration(ms)}</span>
+    </div>
+  );
+}
+
 function TicketLifecyclePill({
   rawContent,
   active,
@@ -626,8 +688,14 @@ const AgentMessage = memo(function AgentMessage({
     if (!msg.pending) markRevealed(msg.id);
   }, [msg.pending, msg.id, markRevealed]);
 
+  const showDuration =
+    !msg.pending && typeof msg.durationMs === "number" && msg.durationMs > 0;
+
   return (
     <div className="flex max-w-[90%] min-w-0 flex-col items-start gap-3">
+      {showDuration ? (
+        <DurationLabel ms={msg.durationMs!} compact={compact} />
+      ) : null}
       {blocks.map((block, i) => {
         const isActive = !!msg.pending && i === lastIndex;
         const key = `${i}-${block.kind}`;

@@ -211,6 +211,7 @@ export function useWidgetChat({
       setTimeout(scrollToBottom, 50);
 
       const agentMsgId = Date.now() + 1;
+      const requestStartedAt = Date.now();
       // Create the agent placeholder up front so stage labels can attach to it
       // before any stream chunk arrives.
       setChatMessages((prev) => [
@@ -515,6 +516,7 @@ export function useWidgetChat({
           minute: "2-digit",
         });
         const fallback = "Sorry, I couldn't generate a response.";
+        const durationMs = Date.now() - requestStartedAt;
         updateAgent((m) => {
           const blocks = m.blocks ?? [];
           const hasContent = blocks.some(
@@ -532,6 +534,7 @@ export function useWidgetChat({
                 ],
             pending: false,
             time: now,
+            durationMs,
           };
         });
       } catch (err) {
@@ -540,11 +543,13 @@ export function useWidgetChat({
           hour: "2-digit",
           minute: "2-digit",
         });
+        const durationMs = Date.now() - requestStartedAt;
         updateAgent((m) => ({
           ...m,
           blocks: [{ kind: "text", content: DEFAULT_CHAT_ERROR_TEXT }],
           pending: false,
           time: now,
+          durationMs,
         }));
       } finally {
         flushPendingStages();

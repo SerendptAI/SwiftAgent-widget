@@ -40,4 +40,5 @@ export interface ChatMsg {
   attachments?: ChatAttachment[];
   blocks?: AgentBlock[];
   pending?: boolean;
+  durationMs?: number;
 }
