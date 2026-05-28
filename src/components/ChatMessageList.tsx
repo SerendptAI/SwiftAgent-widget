@@ -842,8 +842,6 @@ export function ChatMessageList({
               hasRevealed={hasRevealed}
               markRevealed={markRevealed}
             />
-          ) : msg.sender === "agent" && msg.pending ? (
-            <TypingBubble compact={compact} />
           ) : (
             <div
               className={cn(
