@@ -398,7 +398,36 @@ function SwapStageText({
   );
 }
 
-function TextBlock({
+/** Brief "typing dots" warmup shown before a TextBlock starts typewriting —
+ *  fires both for the initial widget welcome text and for the text that
+ *  follows a thinking/stage block in a streamed response. Skipped when the
+ *  message was already fully revealed (close → reopen). */
+const TEXT_BLOCK_WARMUP_MS = 700;
+
+function TextBlock(props: {
+  content: string;
+  isActive: boolean;
+  compact: boolean;
+  onTypingTick?: () => void;
+  revealed?: boolean;
+}) {
+  const { revealed = false, compact } = props;
+  const [warming, setWarming] = useState(!revealed);
+
+  useEffect(() => {
+    if (!warming) return;
+    const id = window.setTimeout(
+      () => setWarming(false),
+      TEXT_BLOCK_WARMUP_MS,
+    );
+    return () => window.clearTimeout(id);
+  }, [warming]);
+
+  if (warming) return <TypingBubble compact={compact} />;
+  return <TextBlockBody {...props} />;
+}
+
+function TextBlockBody({
   content,
   isActive,
   compact,
@@ -742,6 +771,36 @@ function attachmentLabel(file: ChatAttachment) {
   return file.name.split(".").pop()?.slice(0, 3).toUpperCase() || "IMG";
 }
 
+/** Three-dot bubble shown while the agent placeholder is pending but hasn't
+ *  produced any text or blocks yet. Same bubble style as a real text reply. */
+function TypingBubble({ compact }: { compact: boolean }) {
+  return (
+    <div className="flex max-w-[90%] min-w-0 flex-col items-start">
+      <div
+        role="status"
+        aria-label="Agent is typing"
+        className={cn(
+          "font-sans flex items-center gap-1.5 rounded-3xl bg-[#F2F8FF]",
+          compact ? "px-4 py-2.5" : "px-4 py-3",
+        )}
+      >
+        <span
+          className="size-1.5 animate-bounce rounded-full bg-[#006BE5]"
+          style={{ animationDelay: "0ms" }}
+        />
+        <span
+          className="size-1.5 animate-bounce rounded-full bg-[#006BE5]"
+          style={{ animationDelay: "150ms" }}
+        />
+        <span
+          className="size-1.5 animate-bounce rounded-full bg-[#006BE5]"
+          style={{ animationDelay: "300ms" }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function ChatMessageList({
   messages,
   chatEndRef,
@@ -784,6 +843,8 @@ export function ChatMessageList({
               hasRevealed={hasRevealed}
               markRevealed={markRevealed}
             />
+          ) : msg.sender === "agent" && msg.pending ? (
+            <TypingBubble compact={compact} />
           ) : (
             <div
               className={cn(
