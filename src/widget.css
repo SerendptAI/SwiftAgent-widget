@@ -168,6 +168,24 @@
   }
 }
 
+/* Smooth, low-amplitude wave for the agent "typing" dots — each dot is
+   delayed inline so they rise in sequence. */
+@keyframes widget-typing-dot {
+  0%, 70%, 100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  35% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+.widget-typing-dot {
+  animation: widget-typing-dot 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform, opacity;
+}
+
 .widget-animate-fade-in {
   animation: widget-fade-in 0.4s ease-out forwards;
 }

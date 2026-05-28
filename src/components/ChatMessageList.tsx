@@ -771,31 +771,30 @@ function attachmentLabel(file: ChatAttachment) {
   return file.name.split(".").pop()?.slice(0, 3).toUpperCase() || "IMG";
 }
 
-/** Three-dot bubble shown while the agent placeholder is pending but hasn't
- *  produced any text or blocks yet. Same bubble style as a real text reply. */
+/** Compact 4-dot wave bubble shown while an agent text block is warming up.
+ *  Same bubble style/colors as the real text reply, just smaller. */
 function TypingBubble({ compact }: { compact: boolean }) {
+  const dotSize = compact ? "h-1 w-1" : "h-1.5 w-1.5";
   return (
     <div className="flex max-w-[90%] min-w-0 flex-col items-start">
       <div
         role="status"
         aria-label="Agent is typing"
         className={cn(
-          "font-sans flex items-center gap-1.5 rounded-3xl bg-[#F2F8FF]",
-          compact ? "px-4 py-2.5" : "px-4 py-3",
+          "font-sans inline-flex items-center gap-1 rounded-full bg-[#F2F8FF]",
+          compact ? "px-2.5 py-1.5" : "px-3 py-2",
         )}
       >
-        <span
-          className="size-1.5 animate-bounce rounded-full bg-[#006BE5]"
-          style={{ animationDelay: "0ms" }}
-        />
-        <span
-          className="size-1.5 animate-bounce rounded-full bg-[#006BE5]"
-          style={{ animationDelay: "150ms" }}
-        />
-        <span
-          className="size-1.5 animate-bounce rounded-full bg-[#006BE5]"
-          style={{ animationDelay: "300ms" }}
-        />
+        {[0, 1, 2, 3].map((i) => (
+          <span
+            key={i}
+            className={cn(
+              "widget-typing-dot rounded-full bg-[#006BE5]",
+              dotSize,
+            )}
+            style={{ animationDelay: `${i * 140}ms` }}
+          />
+        ))}
       </div>
     </div>
   );
