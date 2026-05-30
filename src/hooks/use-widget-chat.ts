@@ -17,11 +17,16 @@ import {
   type ChatMsg,
   type NavigationGuide,
   type NavigationStep,
+  type UploadedAttachment,
 } from "../components/types";
 import { getBaseUrl } from "../lib/api-client";
 
 const DEFAULT_CHAT_ERROR_TEXT =
   "Sorry, something went wrong. Please try again.";
+
+/** Upload limits, mirrored from the backend's /chat/upload contract. */
+const MAX_FILES = 5;
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 // Backends may serialize the highlight rect as {x,y,w,h}, {x,y,width,height},
 // {left,top,width,height}, or bbox:[x,y,w,h]. Normalize to {x,y,w,h}.
@@ -136,38 +141,108 @@ export function useWidgetChat({
     });
   }, []);
 
-  const addSelectedFiles = useCallback((files: FileList | File[]) => {
-    const nextFiles = Array.from(files)
-      .filter((file) => {
+  const updateSelectedFile = useCallback(
+    (id: string, patch: Partial<ChatAttachment>) => {
+      setSelectedFiles((current) =>
+        current.map((file) =>
+          file.id === id ? { ...file, ...patch } : file,
+        ),
+      );
+    },
+    [],
+  );
+
+  // Upload a single file to the temporary store and return its Cloudinary
+  // metadata. Throws a user-friendly message on the known error statuses.
+  const uploadAttachment = useCallback(
+    async (file: File): Promise<UploadedAttachment> => {
+      const form = new FormData();
+      form.append("files", file);
+
+      const res = await fetch(
+        `${getBaseUrl()}/api/v1/chat/${companyId}/chat/upload`,
+        { method: "POST", body: form },
+      );
+
+      if (!res.ok) {
+        if (res.status === 413) throw new Error("File exceeds the 10 MB limit.");
+        if (res.status === 415) throw new Error("Unsupported file type.");
+        throw new Error("Upload failed. Please try again.");
+      }
+
+      const data = (await res.json()) as { attachments?: UploadedAttachment[] };
+      const meta = data.attachments?.[0];
+      if (!meta?.url) throw new Error("Upload failed. Please try again.");
+      return meta;
+    },
+    [companyId],
+  );
+
+  const addSelectedFiles = useCallback(
+    (files: FileList | File[]) => {
+      const supported = Array.from(files).filter((file) => {
         const name = file.name.toLowerCase();
         const isPdf = file.type === "application/pdf" || name.endsWith(".pdf");
         const isSvg = file.type === "image/svg+xml" || name.endsWith(".svg");
         const isImage = file.type.startsWith("image/") && !isSvg;
 
         return isPdf || isImage;
-      })
-      .map((file) => {
+      });
+
+      const room = MAX_FILES - selectedFilesRef.current.length;
+      if (room <= 0) return;
+      const accepted = supported.slice(0, room);
+      if (!accepted.length) return;
+
+      const prepared = accepted.map((file) => {
         const url = URL.createObjectURL(file);
         attachmentUrlsRef.current.add(url);
+        const tooBig = file.size > MAX_FILE_BYTES;
+        const isPdf =
+          file.type === "application/pdf" ||
+          file.name.toLowerCase().endsWith(".pdf");
 
-        return {
+        const attachment: ChatAttachment = {
           id: `${Date.now()}-${crypto.randomUUID()}`,
           name: file.name,
           mimeType: file.type,
           size: file.size,
           url,
-          kind:
-            file.type === "application/pdf" ||
-            file.name.toLowerCase().endsWith(".pdf")
-              ? "pdf"
-              : "image",
-        } satisfies ChatAttachment;
+          kind: isPdf ? "pdf" : "image",
+          status: tooBig ? "error" : "uploading",
+          errorMessage: tooBig ? "File exceeds the 10 MB limit." : undefined,
+        };
+
+        return { attachment, file, tooBig };
       });
 
-    if (nextFiles.length) {
-      setSelectedFiles((current) => [...current, ...nextFiles]);
-    }
-  }, []);
+      setSelectedFiles((current) => [
+        ...current,
+        ...prepared.map((p) => p.attachment),
+      ]);
+
+      // Kick off uploads for the valid files; each thumbnail tracks its own
+      // status so previews can show a spinner / error independently.
+      prepared.forEach(({ attachment, file, tooBig }) => {
+        if (tooBig) return;
+        uploadAttachment(file)
+          .then((meta) =>
+            updateSelectedFile(attachment.id, {
+              status: "ready",
+              uploaded: meta,
+            }),
+          )
+          .catch((err: unknown) =>
+            updateSelectedFile(attachment.id, {
+              status: "error",
+              errorMessage:
+                err instanceof Error ? err.message : "Upload failed.",
+            }),
+          );
+      });
+    },
+    [uploadAttachment, updateSelectedFile],
+  );
 
   const removeSelectedFile = useCallback((id: string) => {
     setSelectedFiles((current) => {
@@ -183,17 +258,23 @@ export function useWidgetChat({
 
   const sendMessageInternal = useCallback(
     async (userText: string, attachments: ChatAttachment[] = []) => {
+      const text = userText.trim();
+      // Only files that finished uploading carry Cloudinary metadata the
+      // backend will accept (it rejects anything not on res.cloudinary.com).
+      const uploadedAttachments = attachments
+        .map((file) => file.uploaded)
+        .filter((meta): meta is UploadedAttachment => !!meta);
+
       if (
-        (!userText.trim() && attachments.length === 0) ||
+        (!text && uploadedAttachments.length === 0) ||
         isChatLoadingRef.current
       ) {
         return;
       }
 
-      const text = userText.trim();
       const backendText =
         text ||
-        `Uploaded ${attachments.length} file${attachments.length === 1 ? "" : "s"}.`;
+        `Uploaded ${uploadedAttachments.length} file${uploadedAttachments.length === 1 ? "" : "s"}.`;
       const userMsg: ChatMsg = {
         id: Date.now(),
         text,
@@ -418,6 +499,9 @@ export function useWidgetChat({
             session_id: chatSessionId,
             message: backendText,
             page_url: window.location.href,
+            ...(uploadedAttachments.length > 0
+              ? { attachments: uploadedAttachments }
+              : {}),
           }),
         });
 
