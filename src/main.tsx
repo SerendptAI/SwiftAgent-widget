@@ -392,6 +392,7 @@ type WindowWithWidget = Window & {
 
 interface MountOptions {
   baseUrl?: string;
+  apiKey?: string;
   mode?: WidgetMode;
   trigger?: string;
 }
@@ -453,13 +454,13 @@ function resolveBaseUrl(script: HTMLScriptElement | null): string {
 function mountWidget(companyId: string, options: MountOptions = {}) {
   if (document.getElementById(WIDGET_HOST_ID)) return;
 
-  const { baseUrl, mode = "widget", trigger } = options;
+  const { baseUrl, apiKey, mode = "widget", trigger } = options;
 
   const resolvedBase =
     baseUrl ??
     resolveBaseUrl(document.querySelector<HTMLScriptElement>(SCRIPT_SELECTOR));
 
-  initApiClients(resolvedBase);
+  initApiClients(resolvedBase, apiKey);
 
   const host = document.createElement("div");
   host.id = WIDGET_HOST_ID;
@@ -522,11 +523,12 @@ function autoMount() {
   if (!companyId) return;
 
   const baseUrl = resolveBaseUrl(script);
+  const apiKey = script?.getAttribute("data-api-key") ?? undefined;
   const mode: WidgetMode =
     script?.getAttribute("data-mode") === "button" ? "button" : "widget";
   const trigger = script?.getAttribute("data-trigger") ?? undefined;
 
-  mountWidget(companyId, { baseUrl, mode, trigger });
+  mountWidget(companyId, { baseUrl, apiKey, mode, trigger });
 }
 
 if (document.readyState === "loading") {

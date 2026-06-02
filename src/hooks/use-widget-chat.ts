@@ -19,7 +19,7 @@ import {
   type NavigationStep,
   type UploadedAttachment,
 } from "../components/types";
-import { getBaseUrl } from "../lib/api-client";
+import { getApiKey, getBaseUrl } from "../lib/api-client";
 
 const DEFAULT_CHAT_ERROR_TEXT =
   "Sorry, something went wrong. Please try again.";
@@ -27,6 +27,25 @@ const DEFAULT_CHAT_ERROR_TEXT =
 /** Upload limits, mirrored from the backend's /chat/upload contract. */
 const MAX_FILES = 5;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+/** Image MIME types the backend accepts (magic-byte enforced). */
+const ALLOWED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+]);
+const ALLOWED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
+
+/**
+ * The chat and upload endpoints now require the company's widget API key.
+ * Returns the `X-API-Key` header when one is configured, or an empty object
+ * so the request shape stays unchanged when it isn't.
+ */
+function apiKeyHeaders(): Record<string, string> {
+  const key = getApiKey();
+  return key ? { "X-API-Key": key } : {};
+}
 
 // Backends may serialize the highlight rect as {x,y,w,h}, {x,y,width,height},
 // {left,top,width,height}, or bbox:[x,y,w,h]. Normalize to {x,y,w,h}.
@@ -161,7 +180,7 @@ export function useWidgetChat({
 
       const res = await fetch(
         `${getBaseUrl()}/api/v1/chat/${companyId}/chat/upload`,
-        { method: "POST", body: form },
+        { method: "POST", headers: apiKeyHeaders(), body: form },
       );
 
       if (!res.ok) {
@@ -183,8 +202,12 @@ export function useWidgetChat({
       const supported = Array.from(files).filter((file) => {
         const name = file.name.toLowerCase();
         const isPdf = file.type === "application/pdf" || name.endsWith(".pdf");
-        const isSvg = file.type === "image/svg+xml" || name.endsWith(".svg");
-        const isImage = file.type.startsWith("image/") && !isSvg;
+        // The backend now enforces a strict image allowlist (JPEG/PNG/GIF/WebP)
+        // by inspecting magic bytes, so restrict the picker to match and avoid
+        // 415 rejections for formats like SVG/BMP/HEIC.
+        const isImage =
+          ALLOWED_IMAGE_TYPES.has(file.type) ||
+          ALLOWED_IMAGE_EXTENSIONS.some((ext) => name.endsWith(ext));
 
         return isPdf || isImage;
       });
@@ -494,7 +517,7 @@ export function useWidgetChat({
       try {
         const res = await fetch(`${getBaseUrl()}/api/v1/chat/${companyId}/chat`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...apiKeyHeaders() },
           body: JSON.stringify({
             session_id: chatSessionId,
             message: backendText,

@@ -57,7 +57,7 @@ export function ChatInput({
         ref={fileInputRef}
         type="file"
         multiple
-        accept="application/pdf,image/*"
+        accept="application/pdf,image/jpeg,image/png,image/gif,image/webp"
         className="hidden"
         onChange={(event) => {
           if (event.target.files?.length) {
