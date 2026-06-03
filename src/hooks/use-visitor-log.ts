@@ -1,4 +1,3 @@
-import axios from "axios";
 import { useEffect } from "react";
 
 import { localApiClient } from "../lib/api-client";
@@ -32,19 +31,15 @@ export function useVisitorLog(companyId: string) {
       loggedCompanies.add(companyId);
 
       try {
-        const { data: ipData } = await axios.get(
-          "https://api.ipify.org?format=json",
+        // The server now resolves the visitor IP from the request, so no
+        // body is sent.
+        await localApiClient.post(
+          `/api/v1/dashboard/${encodeURIComponent(companyId)}/visitors/log`,
         );
-        if (ipData.ip) {
-          await localApiClient.post(
-            `/api/v1/dashboard/${encodeURIComponent(companyId)}/visitors/log`,
-            { ip_address: ipData.ip },
-          );
-          try {
-            sessionStorage.setItem(`swift_agent_visited_${companyId}`, "true");
-          } catch {
-            // ignore
-          }
+        try {
+          sessionStorage.setItem(`swift_agent_visited_${companyId}`, "true");
+        } catch {
+          // ignore
         }
       } catch {
         // Silently fail — visitor logging is non-critical
