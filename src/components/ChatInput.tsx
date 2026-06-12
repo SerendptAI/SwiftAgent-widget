@@ -33,8 +33,10 @@ export function ChatInput({
 }: ChatInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const hasUploading = selectedFiles.some((f) => f.status === "uploading");
+  const hasReadyFile = selectedFiles.some((f) => f.status !== "error");
   const canSend =
-    (value.trim().length > 0 || selectedFiles.length > 0) && !isLoading;
+    (value.trim().length > 0 || hasReadyFile) && !hasUploading && !isLoading;
 
   useLayoutEffect(() => {
     const ta = textareaRef.current;
@@ -55,7 +57,7 @@ export function ChatInput({
         ref={fileInputRef}
         type="file"
         multiple
-        accept="application/pdf,image/*"
+        accept="application/pdf,image/jpeg,image/png,image/gif,image/webp"
         className="hidden"
         onChange={(event) => {
           if (event.target.files?.length) {
@@ -70,8 +72,11 @@ export function ChatInput({
           {selectedFiles.map((file) => (
             <div
               key={file.id}
-              className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-visible rounded bg-gray-100"
-              title={file.name}
+              className={cn(
+                "relative flex h-11 w-11 shrink-0 items-center justify-center overflow-visible rounded bg-gray-100",
+                file.status === "error" && "ring-1 ring-[#E93333]",
+              )}
+              title={file.status === "error" ? file.errorMessage : file.name}
             >
               {file.kind === "image" ? (
                 <img
@@ -84,6 +89,18 @@ export function ChatInput({
                   {fileLabel(file)}
                 </span>
               )}
+
+              {file.status === "uploading" && (
+                <span className="absolute inset-0 flex items-center justify-center rounded bg-black/30">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                </span>
+              )}
+              {file.status === "error" && (
+                <span className="absolute inset-0 flex items-center justify-center rounded bg-black/40 font-sans text-sm font-bold text-white">
+                  !
+                </span>
+              )}
+
               <button
                 type="button"
                 onClick={() => onRemoveSelectedFile?.(file.id)}

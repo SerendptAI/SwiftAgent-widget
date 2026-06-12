@@ -9,6 +9,7 @@ interface Company {
   website: string;
   industry: string;
   description: string;
+  suggested_ai_prompts?: string[];
   [key: string]: unknown;
 }
 

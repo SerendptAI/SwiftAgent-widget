@@ -168,6 +168,24 @@
   }
 }
 
+/* Smooth, low-amplitude wave for the agent "typing" dots — each dot is
+   delayed inline so they rise in sequence. */
+@keyframes widget-typing-dot {
+  0%, 70%, 100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  35% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+.widget-typing-dot {
+  animation: widget-typing-dot 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform, opacity;
+}
+
 .widget-animate-fade-in {
   animation: widget-fade-in 0.4s ease-out forwards;
 }
@@ -216,6 +234,32 @@
 .widget-animate-minimized-chat-in {
   animation: widget-minimized-chat-in 0.35s cubic-bezier(0.32, 0.72, 0, 1)
     forwards;
+}
+
+@keyframes widget-stage-shimmer {
+  0% {
+    background-position: 150% 0;
+  }
+  100% {
+    background-position: -150% 0;
+  }
+}
+
+.widget-stage-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.35) 0%,
+    rgba(0, 0, 0, 0.35) 40%,
+    rgba(0, 0, 0, 0.95) 50%,
+    rgba(0, 0, 0, 0.35) 60%,
+    rgba(0, 0, 0, 0.35) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: widget-stage-shimmer 1.8s linear infinite;
 }
 
 .scrollbar-none {

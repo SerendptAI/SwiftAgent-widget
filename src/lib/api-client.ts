@@ -5,6 +5,7 @@ import axios from "axios";
  * baseUrl is injected at mount time from the widget.js loader script.
  */
 let _baseUrl = import.meta.env.VITE_API_BASE_URL ?? "";
+let _apiKey = import.meta.env.VITE_API_KEY ?? "";
 
 export function setBaseUrl(url: string) {
   _baseUrl = url.replace(/\/$/, "");
@@ -13,6 +14,18 @@ export function setBaseUrl(url: string) {
 
 export function getBaseUrl() {
   return _baseUrl;
+}
+
+/**
+ * Widget API key, supplied by the host page at mount time. Sent as the
+ * `X-API-Key` header on the authenticated chat/upload endpoints.
+ */
+export function setApiKey(key: string) {
+  _apiKey = key;
+}
+
+export function getApiKey() {
+  return _apiKey;
 }
 
 /** Base URL that goes through the local proxy server (avoids CORS issues) */
@@ -42,8 +55,13 @@ export const publicApiClient = axios.create({
  * Initialize both clients with the correct base URLs.
  * Called once from main.tsx when the widget mounts.
  */
-export function initApiClients(baseUrl: string) {
+export function initApiClients(baseUrl: string, apiKey?: string) {
   const cleanBase = baseUrl.replace(/\/$/, "");
+
+  // Env var takes priority over the script-tag key so local dev can override it.
+  if (!import.meta.env.VITE_API_KEY && apiKey) {
+    _apiKey = apiKey;
+  }
 
   // Env vars take priority over the script-tag base URL for their respective clients
   if (!import.meta.env.VITE_API_BASE_URL) {

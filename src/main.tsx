@@ -13,7 +13,13 @@ import { createRoot, type Root } from "react-dom/client";
 
 import { BriggsFace } from "./components/BriggsFace";
 import { ChatInput } from "./components/ChatInput";
-import { ChatMessageList } from "./components/ChatMessageList";
+import {
+  ChatMessageList,
+  HighlightOverlay,
+  type ImageViewer,
+  ImageViewerContext,
+  type ImageViewerOptions,
+} from "./components/ChatMessageList";
 
 import { usePublicCompanyQuery } from "./hooks/use-public-company";
 import { useVisitorLog } from "./hooks/use-visitor-log";
@@ -141,14 +147,17 @@ function WidgetContent({
   const [bubbleIndex, setBubbleIndex] = useState(0);
   const [bubbleVisible, setBubbleVisible] = useState(false);
   const [bubbleAnimating, setBubbleAnimating] = useState(false);
-  const bubbleQuestions = useMemo(
-    () => [
+  const bubbleQuestions = useMemo(() => {
+    const configured = company?.suggested_ai_prompts?.filter(
+      (q): q is string => typeof q === "string" && q.trim().length > 0,
+    );
+    if (configured && configured.length > 0) return configured;
+    return [
       `What is ${companyName || "this company"} about`,
       "Whats the pricing like?",
       "Are you looking for support?",
-    ],
-    [companyName],
-  );
+    ];
+  }, [company?.suggested_ai_prompts, companyName]);
 
   // Rotate prompt bubble: hidden initially, then show/hide in cycles with pauses
   useEffect(() => {
@@ -206,7 +215,29 @@ function WidgetContent({
   const initial = companyName ? companyName.charAt(0).toUpperCase() : "";
   const displayName = companyName || "";
 
+  // Image lightbox state — lifted here (rather than inside ChatMessageList)
+  // so the overlay renders outside the chat panel, which uses transform via
+  // widget-slide-up and would otherwise act as the containing block for
+  // fixed-positioned descendants, clipping the overlay to the panel.
+  const [viewedImage, setViewedImage] = useState<ImageViewerOptions | null>(
+    null,
+  );
+  const openImage = useCallback<ImageViewer>((opts) => {
+    setViewedImage(opts);
+  }, []);
+  const closeImage = useCallback(() => setViewedImage(null), []);
+
+  useEffect(() => {
+    if (!viewedImage) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeImage();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [viewedImage, closeImage]);
+
   return (
+    <ImageViewerContext.Provider value={openImage}>
     <div className="fixed inset-0 flex flex-col items-end justify-end font-sans pointer-events-none">
       {/* Backdrop */}
       {chatOpen && (
@@ -249,12 +280,14 @@ function WidgetContent({
           {/* Messages */}
           <div
             ref={chat.chatScrollRef}
-            className="swift-chat-messages scrollbar-none relative min-h-0 flex-1 overflow-y-auto p-4"
+            className="swift-chat-messages scrollbar-none relative min-h-0 flex-1 overflow-y-auto px-7 py-4"
           >
             <ChatMessageList
               messages={chat.chatMessages}
               chatEndRef={chat.chatEndRef}
               chatScrollRef={chat.chatScrollRef}
+              hasRevealed={chat.hasRevealed}
+              markRevealed={chat.markRevealed}
               footer={
                 <div className="px-4 pt-8 text-center font-mono text-[11px] uppercase leading-none text-black/40">
                   POWERED BY{" "}
@@ -324,7 +357,56 @@ function WidgetContent({
           />
         </div>
       )}
+
+      {viewedImage ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={viewedImage.alt || "Image preview"}
+          onClick={closeImage}
+          className="pointer-events-auto fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/80 p-4"
+        >
+          <button
+            type="button"
+            onClick={closeImage}
+            aria-label="Close image preview"
+            className="absolute top-3 right-3 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white/15 text-white hover:bg-white/25"
+          >
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              className="h-4 w-4"
+              aria-hidden="true"
+            >
+              <path
+                d="M5 5l10 10M15 5L5 15"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative inline-block overflow-hidden rounded-lg"
+          >
+            <img
+              src={viewedImage.src}
+              alt={viewedImage.alt || ""}
+              className="block max-h-[90vh] max-w-[90vw]"
+            />
+            {viewedImage.highlight && viewedImage.naturalDims ? (
+              <HighlightOverlay
+                highlight={viewedImage.highlight}
+                imgW={viewedImage.naturalDims.w}
+                imgH={viewedImage.naturalDims.h}
+              />
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
+    </ImageViewerContext.Provider>
   );
 }
 
@@ -351,6 +433,7 @@ type WindowWithWidget = Window & {
 
 interface MountOptions {
   baseUrl?: string;
+  apiKey?: string;
   mode?: WidgetMode;
   trigger?: string;
 }
@@ -412,13 +495,13 @@ function resolveBaseUrl(script: HTMLScriptElement | null): string {
 function mountWidget(companyId: string, options: MountOptions = {}) {
   if (document.getElementById(WIDGET_HOST_ID)) return;
 
-  const { baseUrl, mode = "widget", trigger } = options;
+  const { baseUrl, apiKey, mode = "widget", trigger } = options;
 
   const resolvedBase =
     baseUrl ??
     resolveBaseUrl(document.querySelector<HTMLScriptElement>(SCRIPT_SELECTOR));
 
-  initApiClients(resolvedBase);
+  initApiClients(resolvedBase, apiKey);
 
   const host = document.createElement("div");
   host.id = WIDGET_HOST_ID;
@@ -481,11 +564,12 @@ function autoMount() {
   if (!companyId) return;
 
   const baseUrl = resolveBaseUrl(script);
+  const apiKey = script?.getAttribute("data-api-key") ?? undefined;
   const mode: WidgetMode =
     script?.getAttribute("data-mode") === "button" ? "button" : "widget";
   const trigger = script?.getAttribute("data-trigger") ?? undefined;
 
-  mountWidget(companyId, { baseUrl, mode, trigger });
+  mountWidget(companyId, { baseUrl, apiKey, mode, trigger });
 }
 
 if (document.readyState === "loading") {
