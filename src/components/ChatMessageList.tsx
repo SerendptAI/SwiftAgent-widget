@@ -125,6 +125,7 @@ const MARKDOWN_COMPONENTS = {
 interface ChatMessageListProps {
   messages: ChatMsg[];
   chatEndRef: React.RefObject<HTMLDivElement | null>;
+  chatScrollRef?: React.RefObject<HTMLDivElement | null>;
   footer?: React.ReactNode;
   compact?: boolean;
   hasRevealed?: (id: number) => boolean;
@@ -385,7 +386,6 @@ function SwapStageText({
       )}
       style={{ opacity: visible ? 1 : 0 }}
     >
-     
       <span
         className={cn(
           "truncate",
@@ -803,6 +803,7 @@ function TypingBubble({ compact }: { compact: boolean }) {
 export function ChatMessageList({
   messages,
   chatEndRef,
+  chatScrollRef,
   footer,
   compact = false,
   hasRevealed = ALWAYS_ANIMATE,
@@ -819,9 +820,15 @@ export function ChatMessageList({
     scrollPendingRef.current = true;
     requestAnimationFrame(() => {
       scrollPendingRef.current = false;
+      const scrollContainer = chatScrollRef?.current;
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        return;
+      }
+
       chatEndRef.current?.scrollIntoView({ block: "end" });
     });
-  }, [chatEndRef]);
+  }, [chatEndRef, chatScrollRef]);
 
   return (
     <div className="flex min-h-full flex-col">

@@ -144,19 +144,12 @@ export function useWidgetChat({
       const scrollContainer = chatScrollRef.current;
 
       if (scrollContainer) {
-        try {
-          scrollContainer.scrollTo({
-            top: scrollContainer.scrollHeight,
-            behavior: "smooth",
-          });
-        } catch {
-          scrollContainer.scrollTop = scrollContainer.scrollHeight;
-        }
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
 
         return;
       }
 
-      chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      chatEndRef.current?.scrollIntoView({ block: "end" });
     });
   }, []);
 

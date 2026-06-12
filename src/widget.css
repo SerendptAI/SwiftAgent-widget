@@ -275,19 +275,23 @@
 
 .swift-chat-messages {
   min-height: 0;
+  overflow-y: auto;
   overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
 }
 
 @media (max-width: 639.98px) {
   .swift-chat-panel {
-    height: 100%;
+    height: var(--swift-widget-viewport-height, 100vh);
+    max-height: var(--swift-widget-viewport-height, 100vh);
   }
 
   @supports (height: 100dvh) {
     .swift-chat-panel {
-      height: 100dvh;
+      height: var(--swift-widget-viewport-height, 100dvh);
+      max-height: var(--swift-widget-viewport-height, 100dvh);
     }
   }
 }
