@@ -351,7 +351,7 @@ function WidgetContent({
           )}
 
           <BriggsFace
-            className="cursor-pointer overflow-hidden rounded-full transition-transform hover:scale-105"
+            className="cursor-pointer overflow-hidden rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.18)] transition-transform hover:scale-105"
             style={{ width: 72, height: 72 }}
             onClick={() => setChatOpen((o) => !o)}
           />
