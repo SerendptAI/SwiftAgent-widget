@@ -333,8 +333,9 @@ function WidgetContent({
           {!chatOpen && bubbleVisible && (
             <button
               onClick={() => handleBubbleClick(bubbleQuestions[bubbleIndex])}
+              style={{ boxShadow: "0 5px 20px rgba(0,0,0,0.28)" }}
               className={cn(
-                "flex cursor-pointer items-center gap-2.5 rounded-full bg-white px-5 py-3 shadow-[0_4px_20px_rgba(0,0,0,0.12)] transition-shadow hover:shadow-[0_4px_24px_rgba(0,0,0,0.18)]",
+                "flex cursor-pointer items-center gap-2.5 rounded-full bg-white px-5 py-3 transition-shadow",
                 bubbleAnimating
                   ? "widget-bubble-exit"
                   : "widget-animate-bubble",
@@ -351,8 +352,12 @@ function WidgetContent({
           )}
 
           <BriggsFace
-            className="cursor-pointer overflow-hidden rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.18)] transition-transform hover:scale-105"
-            style={{ width: 72, height: 72 }}
+            className="cursor-pointer overflow-hidden rounded-full transition-transform hover:scale-105"
+            style={{
+              width: 72,
+              height: 72,
+              boxShadow: "0 4px 18px rgba(0,0,0,0.25)",
+            }}
             onClick={() => setChatOpen((o) => !o)}
           />
         </div>
