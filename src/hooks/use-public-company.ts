@@ -10,6 +10,7 @@ interface Company {
   industry: string;
   description: string;
   suggested_ai_prompts?: string[];
+  enable_suggested_prompts?: boolean;
   [key: string]: unknown;
 }
 

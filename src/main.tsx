@@ -148,6 +148,8 @@ function WidgetContent({
   const [bubbleVisible, setBubbleVisible] = useState(false);
   const [bubbleAnimating, setBubbleAnimating] = useState(false);
   const bubbleQuestions = useMemo(() => {
+    // Company can turn suggestions off entirely from the dashboard.
+    if (company?.enable_suggested_prompts === false) return [];
     const configured = company?.suggested_ai_prompts?.filter(
       (q): q is string => typeof q === "string" && q.trim().length > 0,
     );
@@ -157,11 +159,15 @@ function WidgetContent({
       "Whats the pricing like?",
       "Are you looking for support?",
     ];
-  }, [company?.suggested_ai_prompts, companyName]);
+  }, [
+    company?.suggested_ai_prompts,
+    company?.enable_suggested_prompts,
+    companyName,
+  ]);
 
   // Rotate prompt bubble: hidden initially, then show/hide in cycles with pauses
   useEffect(() => {
-    if (chatOpen) {
+    if (chatOpen || bubbleQuestions.length === 0) {
       setBubbleVisible(false);
       return;
     }
