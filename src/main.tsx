@@ -108,19 +108,12 @@ function WidgetContent({
   // iOS Safari's visible viewport changes as browser chrome and the keyboard
   // move. Keep the fullscreen widget sized to the real visible area so the
   // message pane remains scrollable instead of being clipped below the fold.
-  // When the keyboard opens, iOS also scrolls the layout viewport to reveal the
-  // focused input, which drags every `position: fixed` element (panel, backdrop)
-  // upward. Anchor the widget root to the visual viewport so it stays pinned to
-  // the visible area instead of sliding up behind the keyboard.
   useEffect(() => {
     if (!chatOpen) return;
 
     const host = document.getElementById(WIDGET_HOST_ID);
     const container = containerRef.current;
 
-    // Remember the measured keyboard inset so subsequent focuses can pre-shrink
-    // by the exact amount; fall back to a typical portrait-keyboard fraction the
-    // first time, before we've ever seen the keyboard.
     let keyboardInset = 0;
     const FALLBACK_KEYBOARD_FRACTION = 0.42;
 
@@ -142,9 +135,6 @@ function WidgetContent({
       if (container) {
         const offsetTop = vv?.offsetTop ?? 0;
         const offsetLeft = vv?.offsetLeft ?? 0;
-        // A non-empty transform makes the container the containing block for its
-        // `fixed` descendants, re-anchoring them to this box; the translate then
-        // cancels the layout-viewport scroll iOS applies for the keyboard.
         container.style.transform =
           offsetTop || offsetLeft
             ? `translate(${offsetLeft}px, ${offsetTop}px)`
@@ -152,20 +142,14 @@ function WidgetContent({
       }
     };
 
-    // The input sits at the bottom of a full-height panel — right where the
-    // keyboard lands — so iOS scrolls the page up to reveal it as the keyboard
-    // animates in. iOS doesn't report that scroll frame-by-frame, so we can't
-    // chase it. Instead, the moment an input is focused we shrink the panel so
-    // the input already clears the keyboard's landing zone; with nothing hidden,
-    // iOS has no reason to scroll and the ride-up never happens.
+    // Pre-shrink on focus so the input clears the keyboard's landing zone before
+    // it animates in, so iOS never scrolls the page up to reveal it.
     const onFocusIn = () => {
       const inset =
         keyboardInset || window.innerHeight * FALLBACK_KEYBOARD_FRACTION;
       applyHeight(window.innerHeight - inset);
     };
 
-    // iOS fires visualViewport resize/scroll sparsely, so poll the live values
-    // every frame for the animation's duration to settle on the exact size.
     let rafId = 0;
     let trackUntil = 0;
     const tick = () => {
