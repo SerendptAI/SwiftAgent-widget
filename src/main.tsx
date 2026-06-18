@@ -7,6 +7,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -45,6 +46,7 @@ function WidgetContent({
 
   useVisitorLog(companyId);
 
+  const containerRef = useRef<HTMLDivElement>(null);
   const [chatOpen, setChatOpen] = useState(false);
 
   // Expose chat-open control to the module-level API so host pages can
@@ -106,13 +108,33 @@ function WidgetContent({
   // iOS Safari's visible viewport changes as browser chrome and the keyboard
   // move. Keep the fullscreen widget sized to the real visible area so the
   // message pane remains scrollable instead of being clipped below the fold.
+  // When the keyboard opens, iOS also scrolls the layout viewport to reveal the
+  // focused input, which drags every `position: fixed` element (panel, backdrop)
+  // upward. Anchor the widget root to the visual viewport so it stays pinned to
+  // the visible area instead of sliding up behind the keyboard.
   useEffect(() => {
     if (!chatOpen) return;
 
     const host = document.getElementById(WIDGET_HOST_ID);
+    const container = containerRef.current;
     const setViewportHeight = () => {
-      const height = window.visualViewport?.height ?? window.innerHeight;
+      const vv = window.visualViewport;
+      const height = vv?.height ?? window.innerHeight;
       host?.style.setProperty("--swift-widget-viewport-height", `${height}px`);
+
+      if (container) {
+        const offsetTop = vv?.offsetTop ?? 0;
+        const offsetLeft = vv?.offsetLeft ?? 0;
+        container.style.height = `${height}px`;
+        container.style.bottom = "auto";
+        // A non-empty transform makes the container the containing block for its
+        // `fixed` descendants, re-anchoring them to this box; the translate then
+        // cancels the layout-viewport scroll iOS applies for the keyboard.
+        container.style.transform =
+          offsetTop || offsetLeft
+            ? `translate(${offsetLeft}px, ${offsetTop}px)`
+            : "";
+      }
     };
 
     setViewportHeight();
@@ -127,6 +149,11 @@ function WidgetContent({
       window.removeEventListener("resize", setViewportHeight);
       window.removeEventListener("orientationchange", setViewportHeight);
       host?.style.removeProperty("--swift-widget-viewport-height");
+      if (container) {
+        container.style.height = "";
+        container.style.bottom = "";
+        container.style.transform = "";
+      }
     };
   }, [chatOpen]);
 
@@ -244,7 +271,10 @@ function WidgetContent({
 
   return (
     <ImageViewerContext.Provider value={openImage}>
-    <div className="fixed inset-0 flex flex-col items-end justify-end font-sans pointer-events-none">
+    <div
+      ref={containerRef}
+      className="fixed inset-0 flex flex-col items-end justify-end font-sans pointer-events-none"
+    >
       {/* Backdrop */}
       {chatOpen && (
         <div
