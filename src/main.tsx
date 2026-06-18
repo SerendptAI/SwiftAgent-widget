@@ -362,7 +362,6 @@ function WidgetContent({
             style={{
               width: 72,
               height: 72,
-              boxShadow: "0 4px 18px rgba(0,0,0,0.25)",
             }}
             onClick={() => setChatOpen((o) => !o)}
           />
