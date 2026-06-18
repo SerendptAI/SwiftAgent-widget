@@ -117,7 +117,7 @@ function WidgetContent({
 
     const host = document.getElementById(WIDGET_HOST_ID);
     const container = containerRef.current;
-    const setViewportHeight = () => {
+    const applyViewport = () => {
       const vv = window.visualViewport;
       const height = vv?.height ?? window.innerHeight;
       host?.style.setProperty("--swift-widget-viewport-height", `${height}px`);
@@ -137,17 +137,40 @@ function WidgetContent({
       }
     };
 
-    setViewportHeight();
-    window.visualViewport?.addEventListener("resize", setViewportHeight);
-    window.visualViewport?.addEventListener("scroll", setViewportHeight);
-    window.addEventListener("resize", setViewportHeight);
-    window.addEventListener("orientationchange", setViewportHeight);
+    // iOS only fires visualViewport resize/scroll sparsely — often just once at
+    // the end of the keyboard's slide-in animation — so a single correction lets
+    // the panel ride up with the keyboard and then snap back. Reading the live
+    // visualViewport values every frame for the animation's duration keeps the
+    // panel glued to the visible area throughout, so there's no visible jump.
+    let rafId = 0;
+    let trackUntil = 0;
+    const tick = () => {
+      applyViewport();
+      if (performance.now() < trackUntil) {
+        rafId = requestAnimationFrame(tick);
+      } else {
+        rafId = 0;
+      }
+    };
+    const track = () => {
+      trackUntil = performance.now() + 500;
+      if (!rafId) rafId = requestAnimationFrame(tick);
+    };
+
+    applyViewport();
+    window.addEventListener("focusin", track);
+    window.visualViewport?.addEventListener("resize", track);
+    window.visualViewport?.addEventListener("scroll", track);
+    window.addEventListener("resize", track);
+    window.addEventListener("orientationchange", track);
 
     return () => {
-      window.visualViewport?.removeEventListener("resize", setViewportHeight);
-      window.visualViewport?.removeEventListener("scroll", setViewportHeight);
-      window.removeEventListener("resize", setViewportHeight);
-      window.removeEventListener("orientationchange", setViewportHeight);
+      if (rafId) cancelAnimationFrame(rafId);
+      window.removeEventListener("focusin", track);
+      window.visualViewport?.removeEventListener("resize", track);
+      window.visualViewport?.removeEventListener("scroll", track);
+      window.removeEventListener("resize", track);
+      window.removeEventListener("orientationchange", track);
       host?.style.removeProperty("--swift-widget-viewport-height");
       if (container) {
         container.style.height = "";
