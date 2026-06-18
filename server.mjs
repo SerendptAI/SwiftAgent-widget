@@ -49,8 +49,9 @@ app.get(["/", "/test.html"], (_req, res) => {
   res.sendFile(path.join(__dirname, "test.html"));
 });
 
-app.use("/dist", express.static(path.join(__dirname, "dist")));
-app.use("/public", express.static(path.join(__dirname, "public")));
+const noCache = (res) => res.setHeader("Cache-Control", "no-cache");
+app.use("/dist", express.static(path.join(__dirname, "dist"), { setHeaders: noCache }));
+app.use("/public", express.static(path.join(__dirname, "public"), { setHeaders: noCache }));
 
 // --- STT endpoint ---
 
