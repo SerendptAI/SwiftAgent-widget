@@ -117,16 +117,31 @@ function WidgetContent({
 
     const host = document.getElementById(WIDGET_HOST_ID);
     const container = containerRef.current;
+
+    // Remember the measured keyboard inset so subsequent focuses can pre-shrink
+    // by the exact amount; fall back to a typical portrait-keyboard fraction the
+    // first time, before we've ever seen the keyboard.
+    let keyboardInset = 0;
+    const FALLBACK_KEYBOARD_FRACTION = 0.42;
+
+    const applyHeight = (height: number) => {
+      host?.style.setProperty("--swift-widget-viewport-height", `${height}px`);
+      if (container) {
+        container.style.height = `${height}px`;
+        container.style.bottom = "auto";
+      }
+    };
+
     const applyViewport = () => {
       const vv = window.visualViewport;
       const height = vv?.height ?? window.innerHeight;
-      host?.style.setProperty("--swift-widget-viewport-height", `${height}px`);
+      const inset = window.innerHeight - height;
+      if (inset > 1) keyboardInset = inset;
+      applyHeight(height);
 
       if (container) {
         const offsetTop = vv?.offsetTop ?? 0;
         const offsetLeft = vv?.offsetLeft ?? 0;
-        container.style.height = `${height}px`;
-        container.style.bottom = "auto";
         // A non-empty transform makes the container the containing block for its
         // `fixed` descendants, re-anchoring them to this box; the translate then
         // cancels the layout-viewport scroll iOS applies for the keyboard.
@@ -137,11 +152,20 @@ function WidgetContent({
       }
     };
 
-    // iOS only fires visualViewport resize/scroll sparsely — often just once at
-    // the end of the keyboard's slide-in animation — so a single correction lets
-    // the panel ride up with the keyboard and then snap back. Reading the live
-    // visualViewport values every frame for the animation's duration keeps the
-    // panel glued to the visible area throughout, so there's no visible jump.
+    // The input sits at the bottom of a full-height panel — right where the
+    // keyboard lands — so iOS scrolls the page up to reveal it as the keyboard
+    // animates in. iOS doesn't report that scroll frame-by-frame, so we can't
+    // chase it. Instead, the moment an input is focused we shrink the panel so
+    // the input already clears the keyboard's landing zone; with nothing hidden,
+    // iOS has no reason to scroll and the ride-up never happens.
+    const onFocusIn = () => {
+      const inset =
+        keyboardInset || window.innerHeight * FALLBACK_KEYBOARD_FRACTION;
+      applyHeight(window.innerHeight - inset);
+    };
+
+    // iOS fires visualViewport resize/scroll sparsely, so poll the live values
+    // every frame for the animation's duration to settle on the exact size.
     let rafId = 0;
     let trackUntil = 0;
     const tick = () => {
@@ -158,7 +182,7 @@ function WidgetContent({
     };
 
     applyViewport();
-    window.addEventListener("focusin", track);
+    window.addEventListener("focusin", onFocusIn);
     window.visualViewport?.addEventListener("resize", track);
     window.visualViewport?.addEventListener("scroll", track);
     window.addEventListener("resize", track);
@@ -166,7 +190,7 @@ function WidgetContent({
 
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
-      window.removeEventListener("focusin", track);
+      window.removeEventListener("focusin", onFocusIn);
       window.visualViewport?.removeEventListener("resize", track);
       window.visualViewport?.removeEventListener("scroll", track);
       window.removeEventListener("resize", track);
