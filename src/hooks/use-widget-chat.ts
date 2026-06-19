@@ -46,18 +46,12 @@ const ALLOWED_IMAGE_TYPES = new Set([
 ]);
 const ALLOWED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
 
-/**
- * The chat and upload endpoints now require the company's widget API key.
- * Returns the `X-API-Key` header when one is configured, or an empty object
- * so the request shape stays unchanged when it isn't.
- */
+
 function apiKeyHeaders(): Record<string, string> {
   const key = getApiKey();
   return key ? { "X-API-Key": key } : {};
 }
 
-// Backends may serialize the highlight rect as {x,y,w,h}, {x,y,width,height},
-// {left,top,width,height}, or bbox:[x,y,w,h]. Normalize to {x,y,w,h}.
 function normalizeHighlight(raw: unknown): NavigationStep["highlight"] {
   if (!raw) return undefined;
   if (Array.isArray(raw) && raw.length === 4 && raw.every((n) => typeof n === "number")) {
@@ -115,11 +109,6 @@ export function useWidgetChat({
     [restored],
   );
 
-  // Agent messages whose reveal (typewriter / stage fade) has already played
-  // to completion. The chat panel unmounts when the widget closes, so this
-  // ref — which lives above that unmount — is what lets a reopened widget show
-  // past responses fully typed instead of replaying their animation.
-  // Restored messages are pre-marked so reload shows them fully typed.
   const revealedMessageIdsRef = useRef<Set<number>>(
     new Set(restored?.messages?.map((m) => m.id) ?? []),
   );

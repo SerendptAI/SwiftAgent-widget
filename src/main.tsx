@@ -608,6 +608,10 @@ function mountWidget(companyId: string, options: MountOptions = {}) {
   host.id = WIDGET_HOST_ID;
   host.style.cssText =
     "position:fixed;top:0;left:0;width:100%;z-index:2147483647;pointer-events:none;";
+  // Opt out of host-page smooth-scroll hijacking (e.g. Lenis), which otherwise
+  // captures wheel events page-wide and starves the chat panel's own scroll.
+  // Lenis walks the composed path, so this is honored through the shadow root.
+  host.setAttribute("data-lenis-prevent", "");
   document.body.appendChild(host);
 
   const shadow = host.attachShadow({ mode: "open" });

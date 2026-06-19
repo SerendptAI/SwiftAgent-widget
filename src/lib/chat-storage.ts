@@ -19,6 +19,19 @@ function storageKey(companyId: string): string {
 }
 
 /**
+ * Safely resolve sessionStorage. Merely *accessing* `sessionStorage` throws a
+ * SecurityError on some embeds (sandboxed/partitioned contexts, blocked
+ * cookies), so a `typeof` guard isn't enough — it must be wrapped.
+ */
+function getStore(): Storage | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Local object URLs (blob:) don't survive a reload, so an attachment is only
  * persistable once its upload finished and we have the hosted Cloudinary URL.
  * Rewrite the preview `url` to that hosted URL and drop the upload lifecycle so
@@ -42,9 +55,10 @@ function persistableAttachments(
 export function loadChatState(
   companyId: string,
 ): { sessionId: string; messages: ChatMsg[] } | null {
-  if (!companyId || typeof sessionStorage === "undefined") return null;
+  const store = getStore();
+  if (!companyId || !store) return null;
   try {
-    const raw = sessionStorage.getItem(storageKey(companyId));
+    const raw = store.getItem(storageKey(companyId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedChat;
     if (
@@ -65,7 +79,8 @@ export function saveChatState(
   sessionId: string,
   messages: ChatMsg[],
 ): void {
-  if (!companyId || typeof sessionStorage === "undefined") return;
+  const store = getStore();
+  if (!companyId || !store) return;
   // Drop the incomplete agent placeholder so a reload mid-stream doesn't
   // restore a stuck spinner.
   const persistable = messages
@@ -80,16 +95,17 @@ export function saveChatState(
     messages: persistable,
   };
   try {
-    sessionStorage.setItem(storageKey(companyId), JSON.stringify(payload));
+    store.setItem(storageKey(companyId), JSON.stringify(payload));
   } catch {
     // Storage full or unavailable (private mode) — persistence is best-effort.
   }
 }
 
 export function clearChatState(companyId: string): void {
-  if (!companyId || typeof sessionStorage === "undefined") return;
+  const store = getStore();
+  if (!companyId || !store) return;
   try {
-    sessionStorage.removeItem(storageKey(companyId));
+    store.removeItem(storageKey(companyId));
   } catch {
     // ignore
   }
