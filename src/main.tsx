@@ -47,6 +47,10 @@ function WidgetContent({
   useVisitorLog(companyId);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  // True while the user is parked at (or near) the bottom of the message list.
+  // Auto-scroll only nudges to the bottom while this holds, so scrolling up to
+  // read earlier messages isn't yanked back down on every streamed tick.
+  const stickToBottomRef = useRef(true);
   const [chatOpen, setChatOpen] = useState(false);
 
   // Expose chat-open control to the module-level API so host pages can
@@ -188,8 +192,33 @@ function WidgetContent({
     };
   }, [chatOpen]);
 
+  // Track whether the user is parked near the bottom. Once they scroll up,
+  // stickToBottom flips off and auto-scroll stops fighting them.
   useEffect(() => {
     if (!chatOpen) return;
+    const scrollContainer = chat.chatScrollRef.current;
+    if (!scrollContainer) return;
+
+    const onScroll = () => {
+      const distance =
+        scrollContainer.scrollHeight -
+        scrollContainer.scrollTop -
+        scrollContainer.clientHeight;
+      stickToBottomRef.current = distance < 80;
+    };
+
+    scrollContainer.addEventListener("scroll", onScroll, { passive: true });
+    return () => scrollContainer.removeEventListener("scroll", onScroll);
+  }, [chatOpen, chat.chatScrollRef]);
+
+  useEffect(() => {
+    if (!chatOpen) return;
+
+    // A message the user just sent always pulls the view back to the bottom;
+    // an incoming agent message only does so if they were already there.
+    const lastMessage = chat.chatMessages[chat.chatMessages.length - 1];
+    if (lastMessage?.sender === "user") stickToBottomRef.current = true;
+    if (!stickToBottomRef.current) return;
 
     const frame = requestAnimationFrame(() => {
       const scrollContainer = chat.chatScrollRef.current;
@@ -353,6 +382,7 @@ function WidgetContent({
               messages={chat.chatMessages}
               chatEndRef={chat.chatEndRef}
               chatScrollRef={chat.chatScrollRef}
+              stickToBottomRef={stickToBottomRef}
               hasRevealed={chat.hasRevealed}
               markRevealed={chat.markRevealed}
               footer={

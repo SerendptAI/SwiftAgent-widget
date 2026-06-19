@@ -126,6 +126,7 @@ interface ChatMessageListProps {
   messages: ChatMsg[];
   chatEndRef: React.RefObject<HTMLDivElement | null>;
   chatScrollRef?: React.RefObject<HTMLDivElement | null>;
+  stickToBottomRef?: React.RefObject<boolean>;
   footer?: React.ReactNode;
   compact?: boolean;
   hasRevealed?: (id: number) => boolean;
@@ -804,6 +805,7 @@ export function ChatMessageList({
   messages,
   chatEndRef,
   chatScrollRef,
+  stickToBottomRef,
   footer,
   compact = false,
   hasRevealed = ALWAYS_ANIMATE,
@@ -814,12 +816,15 @@ export function ChatMessageList({
 
   // Stable identity so memo'd <AgentMessage> doesn't re-render on every
   // parent render; rAF-coalesced so N concurrent typewriters scroll once
-  // per frame instead of N times.
+  // per frame instead of N times. Skips entirely once the user has scrolled
+  // up so streamed ticks don't yank them back to the bottom.
   const handleTypingTick = useCallback(() => {
+    if (stickToBottomRef && !stickToBottomRef.current) return;
     if (scrollPendingRef.current) return;
     scrollPendingRef.current = true;
     requestAnimationFrame(() => {
       scrollPendingRef.current = false;
+      if (stickToBottomRef && !stickToBottomRef.current) return;
       const scrollContainer = chatScrollRef?.current;
       if (scrollContainer) {
         scrollContainer.scrollTop = scrollContainer.scrollHeight;
@@ -828,7 +833,7 @@ export function ChatMessageList({
 
       chatEndRef.current?.scrollIntoView({ block: "end" });
     });
-  }, [chatEndRef, chatScrollRef]);
+  }, [chatEndRef, chatScrollRef, stickToBottomRef]);
 
   return (
     <div className="flex min-h-full flex-col">
