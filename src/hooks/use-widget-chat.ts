@@ -20,9 +20,18 @@ import {
   type UploadedAttachment,
 } from "../components/types";
 import { getApiKey, getBaseUrl } from "../lib/api-client";
+import { loadChatState, saveChatState } from "../lib/chat-storage";
 
 const DEFAULT_CHAT_ERROR_TEXT =
   "Sorry, something went wrong. Please try again.";
+
+const GREETING_MESSAGE: ChatMsg = {
+  id: 1,
+  text: "",
+  sender: "agent",
+  time: "",
+  blocks: [{ kind: "text", content: "Hey there! 👋 How can I help you?" }],
+};
 
 /** Upload limits, mirrored from the backend's /chat/upload contract. */
 const MAX_FILES = 5;
@@ -89,29 +98,31 @@ interface UseWidgetChatReturn {
 export function useWidgetChat({
   companyId,
 }: UseWidgetChatOptions): UseWidgetChatReturn {
-  const [chatMessages, setChatMessages] = useState<ChatMsg[]>([
-    {
-      id: 1,
-      text: "",
-      sender: "agent",
-      time: "",
-      blocks: [
-        { kind: "text", content: "Hey there! 👋 How can I help you?" },
-      ],
-    },
-  ]);
+  // Restore any conversation persisted for this company on a previous page
+  // load, so a reload keeps the thread (and its server session) intact.
+  const restored = useMemo(() => loadChatState(companyId), [companyId]);
+
+  const [chatMessages, setChatMessages] = useState<ChatMsg[]>(
+    () => restored?.messages ?? [GREETING_MESSAGE],
+  );
   const [chatInput, setChatInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<ChatAttachment[]>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
-  const chatSessionId = useMemo(() => crypto.randomUUID(), []);
+  const chatSessionId = useMemo(
+    () => restored?.sessionId ?? crypto.randomUUID(),
+    [restored],
+  );
 
   // Agent messages whose reveal (typewriter / stage fade) has already played
   // to completion. The chat panel unmounts when the widget closes, so this
   // ref — which lives above that unmount — is what lets a reopened widget show
   // past responses fully typed instead of replaying their animation.
-  const revealedMessageIdsRef = useRef<Set<number>>(new Set());
+  // Restored messages are pre-marked so reload shows them fully typed.
+  const revealedMessageIdsRef = useRef<Set<number>>(
+    new Set(restored?.messages?.map((m) => m.id) ?? []),
+  );
   const hasRevealed = useCallback(
     (id: number) => revealedMessageIdsRef.current.has(id),
     [],
@@ -134,6 +145,13 @@ export function useWidgetChat({
       attachmentUrlsRef.current.clear();
     };
   }, []);
+
+  // Persist the conversation as it changes (skipped while a response is still
+  // streaming so we never store the in-progress placeholder).
+  useEffect(() => {
+    if (isChatLoading) return;
+    saveChatState(companyId, chatSessionId, chatMessages);
+  }, [companyId, chatSessionId, chatMessages, isChatLoading]);
 
   const pendingScrollRef = useRef(false);
   const scrollToBottom = useCallback(() => {
