@@ -56,4 +56,9 @@ export interface ChatMsg {
   blocks?: AgentBlock[];
   pending?: boolean;
   durationMs?: number;
+  /** Epoch ms the message was sent; used to render its date + time. */
+  createdAt?: number;
+  /** Human support agent who sent this reply. Absent ⇒ the AI agent. */
+  agentName?: string;
+  agentAvatarUrl?: string;
 }

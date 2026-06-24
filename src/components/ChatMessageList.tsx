@@ -131,6 +131,9 @@ interface ChatMessageListProps {
   compact?: boolean;
   hasRevealed?: (id: number) => boolean;
   markRevealed?: (id: number) => void;
+  /** Company profile, shown as the avatar/name for AI agent messages. */
+  companyName?: string;
+  companyLogoUrl?: string;
 }
 
 const ALWAYS_ANIMATE = () => false;
@@ -722,7 +725,7 @@ const AgentMessage = memo(function AgentMessage({
     !msg.pending && typeof msg.durationMs === "number" && msg.durationMs > 0;
 
   return (
-    <div className="flex max-w-[90%] min-w-0 flex-col items-start gap-3">
+    <div className="flex w-full min-w-0 flex-col items-start gap-3">
       {showDuration ? (
         <DurationLabel ms={msg.durationMs!} compact={compact} />
       ) : null}
@@ -801,6 +804,87 @@ function TypingBubble({ compact }: { compact: boolean }) {
   );
 }
 
+/** Full date + time for an agent reply (e.g. "8:51 AM 6/18/26"). */
+function formatMessageDateTime(msg: ChatMsg): string {
+  if (!msg.createdAt) return msg.time ?? "";
+  const d = new Date(msg.createdAt);
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const date = d.toLocaleDateString([], {
+    year: "2-digit",
+    month: "numeric",
+    day: "numeric",
+  });
+  return `${time} ${date}`;
+}
+
+/** Clock-only time for a user message receipt (e.g. "8:21 AM"). */
+function formatClockTime(msg: ChatMsg): string {
+  if (msg.createdAt) {
+    return new Date(msg.createdAt).toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+  return msg.time ?? "";
+}
+
+function MessageAvatar({
+  src,
+  name,
+  compact,
+}: {
+  src?: string;
+  name?: string;
+  compact: boolean;
+}) {
+  const initial = name?.trim().charAt(0).toUpperCase() || "";
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center justify-center overflow-hidden rounded-full",
+        compact ? "h-7 w-7" : "h-8 w-8",
+        src ? "bg-white" : "bg-[#6433CC]",
+      )}
+    >
+      {src ? (
+        <img src={src} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <span className="font-sans text-[13px] font-bold text-white">
+          {initial}
+        </span>
+      )}
+    </span>
+  );
+}
+
+const TIMESTAMP_CLASS = "font-mono text-[11px] tracking-wide text-black/40";
+
+function DoubleCheck() {
+  return (
+    <svg
+      viewBox="0 0 22 14"
+      fill="none"
+      className="h-3 w-4 shrink-0"
+      aria-hidden="true"
+    >
+      <path
+        d="M1 7.5l3.3 3.3L11 3.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9.5 10.3L10 10.8 17 3.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function ChatMessageList({
   messages,
   chatEndRef,
@@ -810,6 +894,8 @@ export function ChatMessageList({
   compact = false,
   hasRevealed = ALWAYS_ANIMATE,
   markRevealed = IGNORE_REVEAL,
+  companyName,
+  companyLogoUrl,
 }: ChatMessageListProps) {
   const scrollPendingRef = useRef(false);
   const viewImage = useContext(ImageViewerContext);
@@ -837,26 +923,65 @@ export function ChatMessageList({
 
   return (
     <div className="flex min-h-full flex-col">
-      {messages.map((msg, index) => (
-        <div
-          key={msg.id}
-          className={cn(
-            "flex w-full",
-            index > 0 && "mt-8",
-            msg.sender === "user" ? "justify-end" : "justify-start",
-          )}
-        >
-          {msg.sender === "agent" && (msg.text || msg.blocks?.length) ? (
-            <AgentMessage
-              msg={msg}
-              compact={compact}
-              onTypingTick={handleTypingTick}
-              hasRevealed={hasRevealed}
-              markRevealed={markRevealed}
-            />
-          ) : msg.sender === "agent" && msg.pending ? (
-            <TypingBubble compact={compact} />
-          ) : (
+      {messages.map((msg, index) => {
+        const rowMargin = index > 0 ? "mt-8" : "";
+
+        if (msg.sender === "agent") {
+          const hasContent = !!(msg.text || msg.blocks?.length);
+          if (!hasContent && !msg.pending) return null;
+          return (
+            <div
+              key={msg.id}
+              className={cn("flex w-full justify-start", rowMargin)}
+            >
+              <div className="flex w-full max-w-[90%] gap-2">
+                <MessageAvatar
+                  src={msg.agentAvatarUrl ?? companyLogoUrl}
+                  name={msg.agentName ?? companyName}
+                  compact={compact}
+                />
+                <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
+                  {msg.agentName ? (
+                    <span className="flex items-center gap-1.5">
+                      <span className="font-sans text-[13px] font-semibold text-black">
+                        {msg.agentName}
+                      </span>
+                      {companyLogoUrl ? (
+                        <img
+                          src={companyLogoUrl}
+                          alt={companyName ?? ""}
+                          className="h-4 w-4 shrink-0 rounded-[3px] object-cover"
+                        />
+                      ) : null}
+                    </span>
+                  ) : null}
+                  {hasContent ? (
+                    <AgentMessage
+                      msg={msg}
+                      compact={compact}
+                      onTypingTick={handleTypingTick}
+                      hasRevealed={hasRevealed}
+                      markRevealed={markRevealed}
+                    />
+                  ) : (
+                    <TypingBubble compact={compact} />
+                  )}
+                  {!msg.pending && hasContent && (msg.createdAt || msg.time) ? (
+                    <span className={TIMESTAMP_CLASS}>
+                      {formatMessageDateTime(msg)}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div
+            key={msg.id}
+            className={cn("flex w-full justify-end", rowMargin)}
+          >
             <div
               className={cn(
                 "font-sans flex max-w-[90%] flex-col items-end text-black tracking-wide",
@@ -916,10 +1041,20 @@ export function ChatMessageList({
                   </p>
                 </div>
               ) : null}
+
+              {msg.createdAt || msg.time ? (
+                <span
+                  className={cn(TIMESTAMP_CLASS, "mt-1 flex items-center gap-1")}
+                >
+                  Sent
+                  <DoubleCheck />
+                  {formatClockTime(msg)}
+                </span>
+              ) : null}
             </div>
-          )}
-        </div>
-      ))}
+          </div>
+        );
+      })}
 
       {footer ? <div className="mt-auto">{footer}</div> : null}
 
