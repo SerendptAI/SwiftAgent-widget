@@ -307,6 +307,7 @@ export function useWidgetChat({
           hour: "2-digit",
           minute: "2-digit",
         }),
+        createdAt: Date.now(),
       };
       setChatMessages((prev) => [...prev, userMsg]);
       setChatInput("");
@@ -556,6 +557,27 @@ export function useWidgetChat({
               const stage = parsed?.data?.stage;
               const message = parsed?.data?.message;
 
+              // A human support reply carries the agent's identity; tagging the
+              // message switches it from the AI/company profile to the agent's.
+              // Field names follow the API's SdkMessageItem convention
+              // (author_name / avatar_url).
+              const agentName = parsed?.data?.author_name;
+              if (typeof agentName === "string" && agentName.trim()) {
+                const agentAvatarUrl = parsed?.data?.avatar_url;
+                updateAgent((m) =>
+                  m.agentName === agentName
+                    ? null
+                    : {
+                        ...m,
+                        agentName,
+                        agentAvatarUrl:
+                          typeof agentAvatarUrl === "string"
+                            ? agentAvatarUrl
+                            : m.agentAvatarUrl,
+                      },
+                );
+              }
+
               if (stage === "thinking" && typeof message === "string") {
                 enqueueStage(message);
               } else if (stage === "tool") {
@@ -642,6 +664,7 @@ export function useWidgetChat({
             pending: false,
             time: now,
             durationMs,
+            createdAt: Date.now(),
           };
         });
       } catch (err) {
@@ -657,6 +680,7 @@ export function useWidgetChat({
           pending: false,
           time: now,
           durationMs,
+          createdAt: Date.now(),
         }));
       } finally {
         flushPendingStages();

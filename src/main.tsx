@@ -385,6 +385,8 @@ function WidgetContent({
               stickToBottomRef={stickToBottomRef}
               hasRevealed={chat.hasRevealed}
               markRevealed={chat.markRevealed}
+              companyName={companyName}
+              companyLogoUrl={company?.logo_url}
               footer={
                 <div className="px-4 pt-8 text-center font-mono text-[11px] uppercase leading-none text-black/40">
                   POWERED BY{" "}
