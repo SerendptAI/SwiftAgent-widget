@@ -1,3 +1,4 @@
+import riveWasmUrl from "@rive-app/canvas/rive.wasm?url";
 import {
   Alignment,
   Fit,
@@ -5,9 +6,10 @@ import {
   RuntimeLoader,
   useRive,
 } from "@rive-app/react-canvas";
+import { useState } from "react";
 
-import riveWasmUrl from "@rive-app/canvas/rive.wasm?url";
 import rivSrc from "../assets/5briggs_face_animations.riv";
+import fallbackSrc from "../assets/allexpression.webp";
 
 RuntimeLoader.setWasmUrl(riveWasmUrl);
 
@@ -18,6 +20,8 @@ interface BriggsFaceProps {
 }
 
 export function BriggsFace({ className, style, onClick }: BriggsFaceProps) {
+  const [riveFailed, setRiveFailed] = useState(false);
+
   const { RiveComponent } = useRive({
     src: rivSrc,
     artboard: "viewport 2",
@@ -27,6 +31,7 @@ export function BriggsFace({ className, style, onClick }: BriggsFaceProps) {
       fit: Fit.Contain,
       alignment: Alignment.Center,
     }),
+    onLoadError: () => setRiveFailed(true),
   });
 
   return (
@@ -36,7 +41,15 @@ export function BriggsFace({ className, style, onClick }: BriggsFaceProps) {
       style={{ ...style, filter: "none" }}
       onClick={onClick}
     >
-      <RiveComponent style={{ width: "100%", height: "100%" }} />
+      {riveFailed ? (
+        <img
+          src={fallbackSrc}
+          alt=""
+          style={{ width: "100%", height: "100%", objectFit: "contain" }}
+        />
+      ) : (
+        <RiveComponent style={{ width: "100%", height: "100%" }} />
+      )}
     </button>
   );
 }
