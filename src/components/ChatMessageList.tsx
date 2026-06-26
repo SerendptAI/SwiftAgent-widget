@@ -967,7 +967,7 @@ export function ChatMessageList({
                     <TypingBubble compact={compact} />
                   )}
                   {!msg.pending && hasContent && (msg.createdAt || msg.time) ? (
-                    <span className={TIMESTAMP_CLASS}>
+                    <span className={cn(TIMESTAMP_CLASS, "pl-4")}>
                       {formatMessageDateTime(msg)}
                     </span>
                   ) : null}
@@ -1044,7 +1044,7 @@ export function ChatMessageList({
 
               {msg.createdAt || msg.time ? (
                 <span
-                  className={cn(TIMESTAMP_CLASS, "mt-1 flex items-center gap-1")}
+                  className={cn(TIMESTAMP_CLASS, "mt-1 flex items-center gap-1 pr-4")}
                 >
                   Sent
                   <DoubleCheck />

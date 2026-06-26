@@ -348,7 +348,7 @@ function WidgetContent({
       {chatOpen && (
         <div className="swift-chat-panel pointer-events-auto widget-animate-slide-up fixed inset-0 flex min-h-0 flex-col overflow-hidden bg-white sm:inset-auto sm:bottom-[110px] sm:right-5 sm:h-[500px] sm:max-h-[calc(100vh-140px)] sm:w-[380px] sm:shadow-[0_8px_40px_rgba(0,0,0,0.16)]">
           {/* Header */}
-          <div className="flex shrink-0 items-center justify-between border-b border-gray-100 bg-white px-4 py-3">
+          <div className="flex shrink-0 items-center justify-between border-b border-gray-100 bg-white pl-7 pr-4 py-3">
             <div className="flex items-center gap-3">
               {company?.logo_url ? (
                 <img
