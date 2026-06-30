@@ -21,6 +21,10 @@ import {
 } from "../components/types";
 import { getApiKey, getBaseUrl } from "../lib/api-client";
 import { loadChatState, saveChatState } from "../lib/chat-storage";
+import {
+  type ServerChatMessage,
+  useChatSocket,
+} from "./use-chat-socket";
 
 const DEFAULT_CHAT_ERROR_TEXT =
   "Sorry, something went wrong. Please try again.";
@@ -69,8 +73,101 @@ function normalizeHighlight(raw: unknown): NavigationStep["highlight"] {
   return { x, y, w, h };
 }
 
+/** author_name the backend uses for the AI; anything else is a human agent. */
+const AI_AUTHOR_LABEL = "AI Assistant";
+
+/** Strip markdown/punctuation noise so streamed text and stored text compare
+ *  equal when deduping a WebSocket snapshot against local messages. */
+function normalizeContent(text: string): string {
+  return text
+    .replace(/[*_`#>~[\]()]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+/** Text the send flow synthesizes for an attachment-only message, mirrored
+ *  here so the WebSocket echo of that user message dedupes correctly. */
+function attachmentOnlyText(count: number): string {
+  return `Uploaded ${count} file${count === 1 ? "" : "s"}.`;
+}
+
+function clockTime(date: Date): string {
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function mapServerAttachments(raw: unknown): ChatAttachment[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const mapped = raw
+    .map((entry, i): ChatAttachment | null => {
+      if (!entry || typeof entry !== "object") return null;
+      const o = entry as Record<string, unknown>;
+      const url = typeof o.url === "string" ? o.url : undefined;
+      if (!url) return null;
+      const mime =
+        typeof o.mime_type === "string"
+          ? o.mime_type
+          : typeof o.type === "string"
+            ? o.type
+            : "";
+      const name =
+        typeof o.filename === "string"
+          ? o.filename
+          : typeof o.name === "string"
+            ? o.name
+            : "attachment";
+      const isPdf =
+        mime.includes("pdf") || name.toLowerCase().endsWith(".pdf");
+      return {
+        id: `ws-att-${i}-${url}`,
+        name,
+        mimeType: mime,
+        size: 0,
+        url,
+        kind: isPdf ? "pdf" : "image",
+      };
+    })
+    .filter((a): a is ChatAttachment => a !== null);
+  return mapped.length ? mapped : undefined;
+}
+
+function mapServerMessage(msg: ServerChatMessage, id: number): ChatMsg {
+  const createdAt = msg.timestamp ? Date.parse(msg.timestamp) : Date.now();
+  const safeCreatedAt = Number.isFinite(createdAt) ? createdAt : Date.now();
+  const time = clockTime(new Date(safeCreatedAt));
+  const attachments = mapServerAttachments(msg.attachments);
+
+  if (msg.role === "user") {
+    return {
+      id,
+      text: msg.content,
+      sender: "user",
+      time,
+      createdAt: safeCreatedAt,
+      attachments,
+    };
+  }
+
+  const author = msg.author_name?.trim();
+  const isHuman = !!author && author !== AI_AUTHOR_LABEL;
+  return {
+    id,
+    text: "",
+    sender: "agent",
+    time,
+    createdAt: safeCreatedAt,
+    blocks: msg.content ? [{ kind: "text", content: msg.content }] : [],
+    attachments,
+    agentName: isHuman ? author : undefined,
+    agentAvatarUrl:
+      isHuman && typeof msg.avatar_url === "string" ? msg.avatar_url : undefined,
+  };
+}
+
 interface UseWidgetChatOptions {
   companyId: string;
+  /** Open the realtime socket only while the chat panel is visible. */
+  enabled?: boolean;
 }
 
 interface UseWidgetChatReturn {
@@ -91,6 +188,7 @@ interface UseWidgetChatReturn {
 
 export function useWidgetChat({
   companyId,
+  enabled = false,
 }: UseWidgetChatOptions): UseWidgetChatReturn {
   // Restore any conversation persisted for this company on a previous page
   // load, so a reload keeps the thread (and its server session) intact.
@@ -107,6 +205,14 @@ export function useWidgetChat({
   const chatSessionId = useMemo(
     () => restored?.sessionId ?? crypto.randomUUID(),
     [restored],
+  );
+
+  // The server only has a session once a message has been sent through it, so
+  // the realtime socket must not connect before then (the backend closes an
+  // unknown session with 1011, causing a reconnect storm). A restored thread
+  // that already has a user message means the session exists on the server.
+  const [hasServerSession, setHasServerSession] = useState<boolean>(
+    () => restored?.messages?.some((m) => m.sender === "user") ?? false,
   );
 
   const revealedMessageIdsRef = useRef<Set<number>>(
@@ -141,6 +247,93 @@ export function useWidgetChat({
     if (isChatLoading) return;
     saveChatState(companyId, chatSessionId, chatMessages);
   }, [companyId, chatSessionId, chatMessages, isChatLoading]);
+
+  // --- Realtime (WebSocket) reconciliation ---
+  // The socket pushes the full server-side message array. We keep the rich
+  // local streaming experience intact and only fold in messages we haven't
+  // already rendered locally (chiefly human-agent replies on escalated
+  // tickets). Dedup is by content signature against local messages, plus a
+  // per-message key so the same snapshot entry is never appended twice.
+  const latestSnapshotRef = useRef<ServerChatMessage[] | null>(null);
+  const ingestedKeysRef = useRef<Set<string>>(new Set());
+  // Start well above Date.now()-based local ids so the two id spaces never clash.
+  const wsIdRef = useRef(8_000_000_000_000_000);
+
+  const reconcileFromSnapshot = useCallback(() => {
+    const snapshot = latestSnapshotRef.current;
+    if (!snapshot) return;
+    // Hold off while a reply is streaming so a partial local message isn't
+    // mistaken for "missing" and duplicated; we re-run when loading clears.
+    if (isChatLoadingRef.current) return;
+
+    setChatMessages((prev) => {
+      const localSigs = new Set<string>();
+      for (const m of prev) {
+        if (m.sender === "user") {
+          if (m.text) {
+            localSigs.add(`user|${normalizeContent(m.text)}`);
+          } else if (m.attachments?.length) {
+            localSigs.add(
+              `user|${normalizeContent(attachmentOnlyText(m.attachments.length))}`,
+            );
+          }
+        } else {
+          const text =
+            m.blocks
+              ?.filter((b): b is Extract<AgentBlock, { kind: "text" }> =>
+                b.kind === "text",
+              )
+              .map((b) => b.content)
+              .join(" ") || m.text;
+          if (text) localSigs.add(`agent|${normalizeContent(text)}`);
+        }
+      }
+
+      const additions: ChatMsg[] = [];
+      for (const sm of snapshot) {
+        if (!sm || typeof sm.content !== "string") continue;
+        const attachments = mapServerAttachments(sm.attachments);
+        const hasText = sm.content.trim().length > 0;
+        if (!hasText && !attachments) continue;
+
+        const key = `${sm.timestamp ?? ""}|${sm.role}|${sm.content}`;
+        if (ingestedKeysRef.current.has(key)) continue;
+
+        const sig = `${sm.role === "user" ? "user" : "agent"}|${normalizeContent(sm.content)}`;
+        if (hasText && localSigs.has(sig)) {
+          ingestedKeysRef.current.add(key);
+          continue;
+        }
+
+        const mapped = mapServerMessage(sm, ++wsIdRef.current);
+        additions.push(mapped);
+        ingestedKeysRef.current.add(key);
+        if (hasText) localSigs.add(sig);
+      }
+
+      return additions.length ? [...prev, ...additions] : prev;
+    });
+  }, []);
+
+  const handleSnapshot = useCallback(
+    (messages: ServerChatMessage[]) => {
+      latestSnapshotRef.current = messages;
+      reconcileFromSnapshot();
+    },
+    [reconcileFromSnapshot],
+  );
+
+  // A snapshot that arrived mid-stream was deferred; flush it once we settle.
+  useEffect(() => {
+    if (!isChatLoading) reconcileFromSnapshot();
+  }, [isChatLoading, reconcileFromSnapshot]);
+
+  useChatSocket({
+    companyId,
+    sessionId: chatSessionId,
+    enabled: enabled && hasServerSession,
+    onSnapshot: handleSnapshot,
+  });
 
   const pendingScrollRef = useRef(false);
   const scrollToBottom = useCallback(() => {
@@ -532,6 +725,10 @@ export function useWidgetChat({
         if (!res.ok || !res.body) {
           throw new Error(`Chat request failed: ${res.status}`);
         }
+
+        // The session now exists server-side, so the realtime socket can
+        // safely connect (and pick up later human-agent replies).
+        setHasServerSession(true);
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();

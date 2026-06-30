@@ -69,7 +69,9 @@ function WidgetContent({
   const { data: company } = usePublicCompanyQuery(companyId);
   const companyName = company?.name;
 
-  const chat = useWidgetChat({ companyId });
+  const [chatOpen, setChatOpen] = useState(false);
+
+  const chat = useWidgetChat({ companyId, enabled: chatOpen });
 
   useVisitorLog(companyId);
 
@@ -78,7 +80,6 @@ function WidgetContent({
   // Auto-scroll only nudges to the bottom while this holds, so scrolling up to
   // read earlier messages isn't yanked back down on every streamed tick.
   const stickToBottomRef = useRef(true);
-  const [chatOpen, setChatOpen] = useState(false);
 
   // Expose chat-open control to the module-level API so host pages can
   // trigger the chat from any element via SwiftAgentWidget.open/close/toggle.
