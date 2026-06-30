@@ -207,6 +207,14 @@ export function useWidgetChat({
     [restored],
   );
 
+  // The server only has a session once a message has been sent through it, so
+  // the realtime socket must not connect before then (the backend closes an
+  // unknown session with 1011, causing a reconnect storm). A restored thread
+  // that already has a user message means the session exists on the server.
+  const [hasServerSession, setHasServerSession] = useState<boolean>(
+    () => restored?.messages?.some((m) => m.sender === "user") ?? false,
+  );
+
   const revealedMessageIdsRef = useRef<Set<number>>(
     new Set(restored?.messages?.map((m) => m.id) ?? []),
   );
@@ -323,7 +331,7 @@ export function useWidgetChat({
   useChatSocket({
     companyId,
     sessionId: chatSessionId,
-    enabled,
+    enabled: enabled && hasServerSession,
     onSnapshot: handleSnapshot,
   });
 
@@ -717,6 +725,10 @@ export function useWidgetChat({
         if (!res.ok || !res.body) {
           throw new Error(`Chat request failed: ${res.status}`);
         }
+
+        // The session now exists server-side, so the realtime socket can
+        // safely connect (and pick up later human-agent replies).
+        setHasServerSession(true);
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();

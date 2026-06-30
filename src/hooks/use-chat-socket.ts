@@ -75,6 +75,7 @@ export function useChatSocket({
     };
 
     function connect() {
+      let openedAt = 0;
       try {
         socket = new WebSocket(toWsUrl(base, companyId, sessionId));
       } catch {
@@ -83,7 +84,7 @@ export function useChatSocket({
       }
 
       socket.onopen = () => {
-        attempts = 0;
+        openedAt = Date.now();
       };
 
       socket.onmessage = (event) => {
@@ -104,7 +105,12 @@ export function useChatSocket({
       };
 
       socket.onclose = () => {
-        if (!closedByUs) scheduleReconnect();
+        if (closedByUs) return;
+        // Only treat a connection that stayed up as "healthy" enough to retry
+        // fast; an immediate close (e.g. server rejects with 1011) backs off
+        // instead of hammering the endpoint.
+        if (openedAt && Date.now() - openedAt > 4000) attempts = 0;
+        scheduleReconnect();
       };
 
       socket.onerror = () => {
