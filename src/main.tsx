@@ -390,7 +390,17 @@ function WidgetContent({
       if (!start.moved && Math.hypot(dx, dy) < LAUNCHER_DRAG_THRESHOLD) return;
       start.moved = true;
       setBubbleVisible(false);
-      setLauncherDrag({ left: start.left + dx, top: start.top + dy });
+      const maxLeft = window.innerWidth - LAUNCHER_SIZE - LAUNCHER_MARGIN;
+      const maxTop = window.innerHeight - LAUNCHER_SIZE - LAUNCHER_MARGIN;
+      const left = Math.min(
+        Math.max(start.left + dx, LAUNCHER_MARGIN),
+        Math.max(LAUNCHER_MARGIN, maxLeft),
+      );
+      const top = Math.min(
+        Math.max(start.top + dy, LAUNCHER_MARGIN),
+        Math.max(LAUNCHER_MARGIN, maxTop),
+      );
+      setLauncherDrag({ left, top });
     },
     [],
   );
