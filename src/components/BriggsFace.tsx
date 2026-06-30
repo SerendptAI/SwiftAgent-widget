@@ -17,9 +17,21 @@ interface BriggsFaceProps {
   className?: string;
   style?: React.CSSProperties;
   onClick?: () => void;
+  onPointerDown?: (e: React.PointerEvent<HTMLButtonElement>) => void;
+  onPointerMove?: (e: React.PointerEvent<HTMLButtonElement>) => void;
+  onPointerUp?: (e: React.PointerEvent<HTMLButtonElement>) => void;
+  onPointerCancel?: (e: React.PointerEvent<HTMLButtonElement>) => void;
 }
 
-export function BriggsFace({ className, style, onClick }: BriggsFaceProps) {
+export function BriggsFace({
+  className,
+  style,
+  onClick,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+}: BriggsFaceProps) {
   const [riveFailed, setRiveFailed] = useState(false);
 
   const { RiveComponent } = useRive({
@@ -40,6 +52,10 @@ export function BriggsFace({ className, style, onClick }: BriggsFaceProps) {
       className={className}
       style={{ ...style, filter: "none" }}
       onClick={onClick}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
     >
       {riveFailed ? (
         <img
