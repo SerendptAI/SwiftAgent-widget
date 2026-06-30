@@ -32,6 +32,33 @@ import { cn } from "./lib/cn";
 
 export type WidgetMode = "widget" | "button";
 
+const LAUNCHER_SIZE = 72;
+const LAUNCHER_MARGIN = 30;
+const LAUNCHER_DRAG_THRESHOLD = 6;
+const LAUNCHER_POS_KEY = "swift-agent-widget-launcher-pos";
+
+type LauncherRest = { side: "left" | "right"; bottom: number };
+
+function loadLauncherRest(): LauncherRest {
+  const fallback: LauncherRest = { side: "right", bottom: LAUNCHER_MARGIN };
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(LAUNCHER_POS_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<LauncherRest>;
+    if (
+      (parsed.side === "left" || parsed.side === "right") &&
+      typeof parsed.bottom === "number" &&
+      Number.isFinite(parsed.bottom)
+    ) {
+      return { side: parsed.side, bottom: parsed.bottom };
+    }
+  } catch {
+    // Ignore malformed/unavailable storage and fall back to the default corner.
+  }
+  return fallback;
+}
+
 function WidgetContent({
   companyId,
   mode,
@@ -305,6 +332,127 @@ function WidgetContent({
     [chat],
   );
 
+  // Draggable launcher — users can reposition the floating button; it snaps to
+  // the nearest horizontal edge on release and persists across reloads.
+  const [launcherRest, setLauncherRest] = useState<LauncherRest>(loadLauncherRest);
+  const [launcherDrag, setLauncherDrag] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+  const launcherDragRef = useRef<{
+    px: number;
+    py: number;
+    left: number;
+    top: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressLauncherClickRef = useRef(false);
+
+  // Keep the resting position on-screen if the viewport shrinks below it.
+  useEffect(() => {
+    const onResize = () => {
+      setLauncherRest((prev) => {
+        const maxBottom =
+          window.innerHeight - LAUNCHER_SIZE - LAUNCHER_MARGIN;
+        const bottom = Math.min(
+          prev.bottom,
+          Math.max(LAUNCHER_MARGIN, maxBottom),
+        );
+        return bottom === prev.bottom ? prev : { ...prev, bottom };
+      });
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const handleLauncherPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      launcherDragRef.current = {
+        px: e.clientX,
+        py: e.clientY,
+        left: rect.left,
+        top: rect.top,
+        moved: false,
+      };
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    [],
+  );
+
+  const handleLauncherPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      const start = launcherDragRef.current;
+      if (!start) return;
+      const dx = e.clientX - start.px;
+      const dy = e.clientY - start.py;
+      if (!start.moved && Math.hypot(dx, dy) < LAUNCHER_DRAG_THRESHOLD) return;
+      start.moved = true;
+      setBubbleVisible(false);
+      setLauncherDrag({ left: start.left + dx, top: start.top + dy });
+    },
+    [],
+  );
+
+  const endLauncherDrag = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      const start = launcherDragRef.current;
+      launcherDragRef.current = null;
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+      if (!start?.moved) {
+        setLauncherDrag(null);
+        return;
+      }
+      // Suppress the click that fires after a drag so the chat doesn't toggle.
+      suppressLauncherClickRef.current = true;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const side =
+        rect.left + rect.width / 2 < window.innerWidth / 2 ? "left" : "right";
+      const maxBottom = window.innerHeight - rect.height - LAUNCHER_MARGIN;
+      const bottom = Math.min(
+        Math.max(window.innerHeight - rect.bottom, LAUNCHER_MARGIN),
+        Math.max(LAUNCHER_MARGIN, maxBottom),
+      );
+      const next: LauncherRest = { side, bottom };
+      setLauncherRest(next);
+      setLauncherDrag(null);
+      try {
+        window.localStorage.setItem(LAUNCHER_POS_KEY, JSON.stringify(next));
+      } catch {
+        // Storage may be unavailable (private mode); position stays for the session.
+      }
+    },
+    [],
+  );
+
+  const handleLauncherPointerCancel = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      launcherDragRef.current = null;
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+      setLauncherDrag(null);
+    },
+    [],
+  );
+
+  const handleLauncherClick = useCallback(() => {
+    if (suppressLauncherClickRef.current) {
+      suppressLauncherClickRef.current = false;
+      return;
+    }
+    setChatOpen((o) => !o);
+  }, []);
+
+  const launcherStyle: React.CSSProperties = launcherDrag
+    ? { left: launcherDrag.left, top: launcherDrag.top }
+    : launcherRest.side === "left"
+      ? { left: LAUNCHER_MARGIN, bottom: launcherRest.bottom }
+      : { right: LAUNCHER_MARGIN, bottom: launcherRest.bottom };
+
   const initial = companyName ? companyName.charAt(0).toUpperCase() : "";
   const displayName = companyName || "";
 
@@ -423,10 +571,11 @@ function WidgetContent({
       {mode === "widget" && (
         <div
           className={cn(
-            "pointer-events-auto fixed z-100 flex flex-col items-end gap-3",
+            "pointer-events-auto fixed z-100 flex flex-col gap-3 select-none",
+            launcherRest.side === "left" ? "items-start" : "items-end",
             chatOpen && "hidden sm:flex",
           )}
-          style={{ bottom: 30, right: 30 }}
+          style={launcherStyle}
         >
           {/* Rotating prompt bubble */}
           {!chatOpen && bubbleVisible && (
@@ -451,12 +600,20 @@ function WidgetContent({
           )}
 
           <BriggsFace
-            className="cursor-pointer overflow-hidden rounded-full transition-transform hover:scale-105"
+            className={cn(
+              "overflow-hidden rounded-full transition-transform hover:scale-105",
+              launcherDrag ? "cursor-grabbing" : "cursor-grab",
+            )}
             style={{
-              width: 72,
-              height: 72,
+              width: LAUNCHER_SIZE,
+              height: LAUNCHER_SIZE,
+              touchAction: "none",
             }}
-            onClick={() => setChatOpen((o) => !o)}
+            onClick={handleLauncherClick}
+            onPointerDown={handleLauncherPointerDown}
+            onPointerMove={handleLauncherPointerMove}
+            onPointerUp={endLauncherDrag}
+            onPointerCancel={handleLauncherPointerCancel}
           />
         </div>
       )}
