@@ -44,6 +44,11 @@ export function usePublicCompanyQuery(companyId: string | null | undefined) {
   const [data, setData] = useState<Company | undefined>(() =>
     companyId ? (companyCache.get(companyId) ?? undefined) : undefined,
   );
+  // Loading only on the very first fetch for a companyId; a cached (or already
+  // attempted) id resolves synchronously, so no skeleton flashes on reopen.
+  const [isLoading, setIsLoading] = useState(() =>
+    companyId ? !companyCache.has(companyId) : false,
+  );
 
   useEffect(() => {
     if (!companyId) return;
@@ -52,13 +57,17 @@ export function usePublicCompanyQuery(companyId: string | null | undefined) {
     if (companyCache.has(companyId)) {
       const cached = companyCache.get(companyId);
       if (cached) setData(cached);
+      setIsLoading(false);
       return;
     }
 
-    fetchCompanyOnce(companyId).then((result) => {
-      if (result) setData(result);
-    });
+    setIsLoading(true);
+    fetchCompanyOnce(companyId)
+      .then((result) => {
+        if (result) setData(result);
+      })
+      .finally(() => setIsLoading(false));
   }, [companyId]);
 
-  return { data };
+  return { data, isLoading };
 }

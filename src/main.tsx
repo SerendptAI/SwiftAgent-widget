@@ -21,7 +21,7 @@ import {
   ImageViewerContext,
   type ImageViewerOptions,
 } from "./components/ChatMessageList";
-
+import { ChatSkeleton } from "./components/ChatSkeleton";
 import { usePublicCompanyQuery } from "./hooks/use-public-company";
 import { useVisitorLog } from "./hooks/use-visitor-log";
 import { useWidgetChat } from "./hooks/use-widget-chat";
@@ -66,7 +66,8 @@ function WidgetContent({
   companyId: string;
   mode: WidgetMode;
 }) {
-  const { data: company } = usePublicCompanyQuery(companyId);
+  const { data: company, isLoading: companyLoading } =
+    usePublicCompanyQuery(companyId);
   const companyName = company?.name;
 
   const [chatOpen, setChatOpen] = useState(false);
@@ -537,6 +538,9 @@ function WidgetContent({
             ref={chat.chatScrollRef}
             className="swift-chat-messages scrollbar-none relative min-h-0 flex-1 overflow-y-auto px-7 py-4"
           >
+            {companyLoading ? (
+              <ChatSkeleton />
+            ) : (
             <ChatMessageList
               messages={chat.chatMessages}
               chatEndRef={chat.chatEndRef}
@@ -560,6 +564,7 @@ function WidgetContent({
                 </div>
               }
             />
+            )}
           </div>
 
           {/* Input */}
