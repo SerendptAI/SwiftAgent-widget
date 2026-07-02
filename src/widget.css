@@ -262,6 +262,26 @@
   animation: widget-stage-shimmer 1.8s linear infinite;
 }
 
+@keyframes widget-skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.widget-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.06) 25%,
+    rgba(0, 0, 0, 0.12) 37%,
+    rgba(0, 0, 0, 0.06) 63%
+  );
+  background-size: 400% 100%;
+  animation: widget-skeleton-shimmer 1.4s ease infinite;
+}
+
 .scrollbar-none {
   scrollbar-width: none;
 }
