@@ -131,7 +131,6 @@ interface ChatMessageListProps {
   compact?: boolean;
   hasRevealed?: (id: number) => boolean;
   markRevealed?: (id: number) => void;
-  /** Company profile, shown as the avatar/name for AI agent messages. */
   companyName?: string;
   companyLogoUrl?: string;
 }
@@ -804,7 +803,6 @@ function TypingBubble({ compact }: { compact: boolean }) {
   );
 }
 
-/** Full date + time for an agent reply (e.g. "8:51 AM 6/18/26"). */
 function formatMessageDateTime(msg: ChatMsg): string {
   if (!msg.createdAt) return msg.time ?? "";
   const d = new Date(msg.createdAt);
@@ -817,7 +815,6 @@ function formatMessageDateTime(msg: ChatMsg): string {
   return `${time} ${date}`;
 }
 
-/** Clock-only time for a user message receipt (e.g. "8:21 AM"). */
 function formatClockTime(msg: ChatMsg): string {
   if (msg.createdAt) {
     return new Date(msg.createdAt).toLocaleTimeString([], {

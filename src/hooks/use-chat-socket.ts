@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 
 import { getBaseUrl } from "../lib/api-client";
 
-/** A message as stored server-side, delivered over the chat WebSocket. */
 export interface ServerChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
