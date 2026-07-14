@@ -277,6 +277,46 @@ function WidgetContent({
     companyName,
   ]);
 
+  // Assistance pill visibility — appears in bursts with pauses so it draws
+  // attention without permanently occupying the corner.
+  const [pillVisible, setPillVisible] = useState(false);
+  const [pillLeaving, setPillLeaving] = useState(false);
+  useEffect(() => {
+    if (chatOpen) {
+      setPillVisible(false);
+      return;
+    }
+
+    let cancelled = false;
+    const wait = (ms: number) =>
+      new Promise<void>((r) => {
+        const t = setTimeout(r, ms);
+        if (cancelled) clearTimeout(t);
+      });
+
+    const run = async () => {
+      await wait(3000);
+
+      while (!cancelled) {
+        setPillLeaving(false);
+        setPillVisible(true);
+        await wait(6000);
+
+        setPillLeaving(true);
+        await wait(300);
+        setPillVisible(false);
+        setPillLeaving(false);
+
+        await wait(7000);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [chatOpen]);
+
   // Draggable launcher — users can reposition the floating button; it snaps to
   // the nearest horizontal edge on release and persists across reloads.
   const [launcherRest, setLauncherRest] = useState<LauncherRest>(loadLauncherRest);
@@ -559,11 +599,14 @@ function WidgetContent({
           style={launcherStyle}
         >
           {/* Assistance pill */}
-          {!chatOpen && (
+          {!chatOpen && pillVisible && (
             <button
               onClick={handleLauncherClick}
               style={{ boxShadow: "0 5px 20px rgba(0,0,0,0.28)" }}
-              className="widget-animate-bubble flex cursor-pointer items-center gap-2.5 rounded-full bg-white py-3.5 pr-6 pl-4 transition-shadow"
+              className={cn(
+                "flex cursor-pointer items-center gap-2.5 rounded-full bg-white py-3.5 pr-6 pl-4 transition-shadow",
+                pillLeaving ? "widget-bubble-exit" : "widget-animate-bubble",
+              )}
             >
               <span className="font-mono flex h-[35px] w-[35px] shrink-0 items-center justify-center rounded-full bg-[#F6F6F6] text-lg font-medium text-black">
                 ?
