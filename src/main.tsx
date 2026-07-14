@@ -259,10 +259,6 @@ function WidgetContent({
     return () => cancelAnimationFrame(frame);
   }, [chat.chatMessages.length, chat.chatScrollRef, chatOpen]);
 
-  // Rotating prompt bubble — starts hidden, shows questions in bursts with pauses
-  const [bubbleIndex, setBubbleIndex] = useState(0);
-  const [bubbleVisible, setBubbleVisible] = useState(false);
-  const [bubbleAnimating, setBubbleAnimating] = useState(false);
   const bubbleQuestions = useMemo(() => {
     // Company can turn suggestions off entirely from the dashboard.
     if (company?.enable_suggested_prompts === false) return [];
@@ -280,59 +276,6 @@ function WidgetContent({
     company?.enable_suggested_prompts,
     companyName,
   ]);
-
-  // Rotate prompt bubble: hidden initially, then show/hide in cycles with pauses
-  useEffect(() => {
-    if (chatOpen || bubbleQuestions.length === 0) {
-      setBubbleVisible(false);
-      return;
-    }
-
-    let cancelled = false;
-    const wait = (ms: number) =>
-      new Promise<void>((r) => {
-        const t = setTimeout(r, ms);
-        if (cancelled) clearTimeout(t);
-      });
-
-    const run = async () => {
-      await wait(3000);
-
-      while (!cancelled) {
-        setBubbleAnimating(false);
-        setBubbleVisible(true);
-        await wait(4000);
-
-        setBubbleAnimating(true);
-        await wait(300);
-        setBubbleVisible(false);
-        setBubbleAnimating(false);
-
-        await wait(2500);
-
-        if (!cancelled) {
-          setBubbleIndex((i) => (i + 1) % bubbleQuestions.length);
-        }
-      }
-    };
-
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [chatOpen, bubbleQuestions.length]);
-
-  const handleBubbleClick = useCallback(
-    (question: string) => {
-      setChatOpen(true);
-      setBubbleVisible(false);
-      // Small delay so the chat panel opens first
-      setTimeout(() => {
-        chat.sendMessage(question);
-      }, 100);
-    },
-    [chat],
-  );
 
   // Draggable launcher — users can reposition the floating button; it snaps to
   // the nearest horizontal edge on release and persists across reloads.
@@ -391,7 +334,6 @@ function WidgetContent({
       const dy = e.clientY - start.py;
       if (!start.moved && Math.hypot(dx, dy) < LAUNCHER_DRAG_THRESHOLD) return;
       start.moved = true;
-      setBubbleVisible(false);
       const maxLeft = window.innerWidth - LAUNCHER_SIZE - LAUNCHER_MARGIN;
       const maxTop = window.innerHeight - LAUNCHER_SIZE - LAUNCHER_MARGIN;
       const left = Math.min(
@@ -616,24 +558,18 @@ function WidgetContent({
           )}
           style={launcherStyle}
         >
-          {/* Rotating prompt bubble */}
-          {!chatOpen && bubbleVisible && (
+          {/* Assistance pill */}
+          {!chatOpen && (
             <button
-              onClick={() => handleBubbleClick(bubbleQuestions[bubbleIndex])}
+              onClick={handleLauncherClick}
               style={{ boxShadow: "0 5px 20px rgba(0,0,0,0.28)" }}
-              className={cn(
-                "flex cursor-pointer items-center gap-2.5 rounded-full bg-white px-5 py-3 transition-shadow",
-                bubbleAnimating
-                  ? "widget-bubble-exit"
-                  : "widget-animate-bubble",
-              )}
-              key={bubbleIndex}
+              className="widget-animate-bubble flex cursor-pointer items-center gap-2.5 rounded-full bg-white py-3.5 pr-6 pl-4 transition-shadow"
             >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-bold text-gray-600">
+              <span className="font-mono flex h-[35px] w-[35px] shrink-0 items-center justify-center rounded-full bg-[#F6F6F6] text-lg font-medium text-black">
                 ?
               </span>
-              <span className="font-mono whitespace-nowrap text-xs font-medium tracking-wide text-black uppercase sm:text-sm">
-                {bubbleQuestions[bubbleIndex]}
+              <span className="font-mono whitespace-nowrap text-sm tracking-[0.1em] text-black uppercase">
+                Need assistance?
               </span>
             </button>
           )}
