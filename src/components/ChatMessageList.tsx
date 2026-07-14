@@ -127,11 +127,9 @@ interface ChatMessageListProps {
   chatEndRef: React.RefObject<HTMLDivElement | null>;
   chatScrollRef?: React.RefObject<HTMLDivElement | null>;
   stickToBottomRef?: React.RefObject<boolean>;
-  footer?: React.ReactNode;
   compact?: boolean;
   hasRevealed?: (id: number) => boolean;
   markRevealed?: (id: number) => void;
-  /** Company profile, shown as the avatar/name for AI agent messages. */
   companyName?: string;
   companyLogoUrl?: string;
 }
@@ -408,12 +406,39 @@ function SwapStageText({
  *  message was already fully revealed (close → reopen). */
 const TEXT_BLOCK_WARMUP_MS = 700;
 
+/** iMessage-style tail hanging off a bubble's bottom outer corner.
+ *  Side-specific paths (from the Figma asset) instead of a CSS mirror —
+ *  the widget's Tailwind build doesn't ship negative scale utilities. */
+const TAIL_PATHS = {
+  left: "M24 0V4C24 12 20 18 14 22C8 26 2 28 0 28C4 26 8 22 11 18C14 14 16 8 16 0H24Z",
+  right: "M0 0V4C0 12 4 18 10 22C16 26 22 28 24 28C20 26 16 22 13 18C10 14 8 8 8 0H0Z",
+} as const;
+
+function BubbleTail({ side }: { side: "left" | "right" }) {
+  return (
+    <svg
+      viewBox="0 0 24 28"
+      aria-hidden="true"
+      fill="currentColor"
+      className={cn(
+        "absolute bottom-[-11px] h-[28px] w-[24px]",
+        side === "left"
+          ? "left-[-8px] text-[#F2F8FF]"
+          : "right-[-8px] text-[#006BE5]",
+      )}
+    >
+      <path d={TAIL_PATHS[side]} />
+    </svg>
+  );
+}
+
 function TextBlock(props: {
   content: string;
   isActive: boolean;
   compact: boolean;
   onTypingTick?: () => void;
   revealed?: boolean;
+  tail?: boolean;
 }) {
   const { revealed = false, compact } = props;
   const [warming, setWarming] = useState(!revealed);
@@ -437,12 +462,14 @@ function TextBlockBody({
   compact,
   onTypingTick,
   revealed = false,
+  tail = false,
 }: {
   content: string;
   isActive: boolean;
   compact: boolean;
   onTypingTick?: () => void;
   revealed?: boolean;
+  tail?: boolean;
 }) {
   const { displayText, isTyping } = useTypewriter(content, {
     revealed,
@@ -455,10 +482,11 @@ function TextBlockBody({
   return (
     <div
       className={cn(
-        "font-sans min-w-0 max-w-full rounded-3xl bg-[#F2F8FF] px-4 py-2.5 text-[#006BE5] wrap-anywhere",
+        "font-sans relative min-w-0 max-w-full rounded-3xl bg-[#F2F8FF] px-4 py-2.5 text-[#006BE5] wrap-anywhere",
         compact ? "text-[13px] leading-[22px]" : "text-[14px] leading-6",
       )}
     >
+      {tail && <BubbleTail side="left" />}
       {parts ? (
         <>
           {parts.before && (
@@ -762,6 +790,7 @@ const AgentMessage = memo(function AgentMessage({
             compact={compact}
             onTypingTick={onTypingTick}
             revealed={revealed}
+            tail={i === lastIndex}
           />
         );
       })}
@@ -804,7 +833,6 @@ function TypingBubble({ compact }: { compact: boolean }) {
   );
 }
 
-/** Full date + time for an agent reply (e.g. "8:51 AM 6/18/26"). */
 function formatMessageDateTime(msg: ChatMsg): string {
   if (!msg.createdAt) return msg.time ?? "";
   const d = new Date(msg.createdAt);
@@ -817,7 +845,6 @@ function formatMessageDateTime(msg: ChatMsg): string {
   return `${time} ${date}`;
 }
 
-/** Clock-only time for a user message receipt (e.g. "8:21 AM"). */
 function formatClockTime(msg: ChatMsg): string {
   if (msg.createdAt) {
     return new Date(msg.createdAt).toLocaleTimeString([], {
@@ -890,7 +917,6 @@ export function ChatMessageList({
   chatEndRef,
   chatScrollRef,
   stickToBottomRef,
-  footer,
   compact = false,
   hasRevealed = ALWAYS_ANIMATE,
   markRevealed = IGNORE_REVEAL,
@@ -934,27 +960,32 @@ export function ChatMessageList({
               key={msg.id}
               className={cn("flex w-full justify-start", rowMargin)}
             >
-              <div className="flex w-full max-w-[90%] gap-2">
-                <MessageAvatar
-                  src={msg.agentAvatarUrl ?? companyLogoUrl}
-                  name={msg.agentName ?? companyName}
-                  compact={compact}
-                />
-                <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
-                  {msg.agentName ? (
-                    <span className="flex items-center gap-1.5">
-                      <span className="font-sans text-[13px] font-semibold text-black">
-                        {msg.agentName}
-                      </span>
-                      {companyLogoUrl ? (
-                        <img
-                          src={companyLogoUrl}
-                          alt={companyName ?? ""}
-                          className="h-4 w-4 shrink-0 rounded-[3px] object-cover"
-                        />
-                      ) : null}
+              <div className="flex w-full max-w-[90%] min-w-0 flex-col items-start gap-1.5">
+                {msg.agentName ? (
+                  <span
+                    className={cn(
+                      "flex items-center gap-1.5",
+                      compact ? "pl-9" : "pl-10",
+                    )}
+                  >
+                    <span className="font-sans text-[13px] font-semibold text-black">
+                      {msg.agentName}
                     </span>
-                  ) : null}
+                    {companyLogoUrl ? (
+                      <img
+                        src={companyLogoUrl}
+                        alt={companyName ?? ""}
+                        className="h-4 w-4 shrink-0 rounded-[3px] object-cover"
+                      />
+                    ) : null}
+                  </span>
+                ) : null}
+                <div className="flex w-full min-w-0 items-end gap-2">
+                  <MessageAvatar
+                    src={msg.agentAvatarUrl ?? companyLogoUrl}
+                    name={msg.agentName ?? companyName}
+                    compact={compact}
+                  />
                   {hasContent ? (
                     <AgentMessage
                       msg={msg}
@@ -966,12 +997,14 @@ export function ChatMessageList({
                   ) : (
                     <TypingBubble compact={compact} />
                   )}
-                  {!msg.pending && hasContent && (msg.createdAt || msg.time) ? (
-                    <span className={cn(TIMESTAMP_CLASS, "pl-4")}>
-                      {formatMessageDateTime(msg)}
-                    </span>
-                  ) : null}
                 </div>
+                {!msg.pending && hasContent && (msg.createdAt || msg.time) ? (
+                  <span
+                    className={cn(TIMESTAMP_CLASS, compact ? "pl-13" : "pl-14")}
+                  >
+                    {formatMessageDateTime(msg)}
+                  </span>
+                ) : null}
               </div>
             </div>
           );
@@ -1032,10 +1065,11 @@ export function ChatMessageList({
               {msg.text ? (
                 <div
                   className={cn(
-                    "min-w-0 max-w-full rounded-3xl bg-[#006BE5] px-4 py-2.5 text-white",
+                    "relative min-w-0 max-w-full rounded-3xl bg-[#006BE5] px-4 py-2.5 text-white",
                     compact ? "text-[13px] leading-[22px]" : "text-[14px] leading-6",
                   )}
                 >
+                  <BubbleTail side="right" />
                   <p className="whitespace-pre-wrap wrap-anywhere">
                     {msg.text}
                   </p>
@@ -1055,8 +1089,6 @@ export function ChatMessageList({
           </div>
         );
       })}
-
-      {footer ? <div className="mt-auto">{footer}</div> : null}
 
       {/* Bottom scroll anchor */}
       <div ref={chatEndRef} className={compact ? "h-1 w-full" : "h-2 w-full"} />

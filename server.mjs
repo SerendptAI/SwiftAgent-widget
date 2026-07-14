@@ -46,7 +46,9 @@ app.use(cors());
 // --- Static files (before API routes so they're served directly) ---
 
 app.get(["/", "/test.html"], (_req, res) => {
-  res.sendFile(path.join(__dirname, "test.html"));
+  res.sendFile(path.join(__dirname, "test.html"), (err) => {
+    if (err && !res.headersSent) res.status(200).send("OK");
+  });
 });
 
 const noCache = (res) => res.setHeader("Cache-Control", "no-cache");

@@ -496,10 +496,7 @@ export function useWidgetChat({
         text,
         sender: "user",
         attachments,
-        time: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
+        time: clockTime(new Date()),
         createdAt: Date.now(),
       };
       setChatMessages((prev) => [...prev, userMsg]);
@@ -837,10 +834,7 @@ export function useWidgetChat({
           }
         }
 
-        const now = new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        });
+        const now = clockTime(new Date());
         const fallback = "Sorry, I couldn't generate a response.";
         const durationMs = Date.now() - requestStartedAt;
         updateAgent((m) => {
@@ -866,10 +860,7 @@ export function useWidgetChat({
         });
       } catch (err) {
         console.error("Chat error:", err);
-        const now = new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        });
+        const now = clockTime(new Date());
         const durationMs = Date.now() - requestStartedAt;
         updateAgent((m) => ({
           ...m,

@@ -259,10 +259,6 @@ function WidgetContent({
     return () => cancelAnimationFrame(frame);
   }, [chat.chatMessages.length, chat.chatScrollRef, chatOpen]);
 
-  // Rotating prompt bubble — starts hidden, shows questions in bursts with pauses
-  const [bubbleIndex, setBubbleIndex] = useState(0);
-  const [bubbleVisible, setBubbleVisible] = useState(false);
-  const [bubbleAnimating, setBubbleAnimating] = useState(false);
   const bubbleQuestions = useMemo(() => {
     // Company can turn suggestions off entirely from the dashboard.
     if (company?.enable_suggested_prompts === false) return [];
@@ -271,9 +267,9 @@ function WidgetContent({
     );
     if (configured && configured.length > 0) return configured;
     return [
-      `What is ${companyName || "this company"} about`,
-      "Whats the pricing like?",
-      "Are you looking for support?",
+      `What is ${companyName || "this company"} about?`,
+      "How can I use it?",
+      "Do you have a starter plan?",
     ];
   }, [
     company?.suggested_ai_prompts,
@@ -281,10 +277,13 @@ function WidgetContent({
     companyName,
   ]);
 
-  // Rotate prompt bubble: hidden initially, then show/hide in cycles with pauses
+  // Assistance pill visibility — appears in bursts with pauses so it draws
+  // attention without permanently occupying the corner.
+  const [pillVisible, setPillVisible] = useState(false);
+  const [pillLeaving, setPillLeaving] = useState(false);
   useEffect(() => {
-    if (chatOpen || bubbleQuestions.length === 0) {
-      setBubbleVisible(false);
+    if (chatOpen) {
+      setPillVisible(false);
       return;
     }
 
@@ -299,20 +298,16 @@ function WidgetContent({
       await wait(3000);
 
       while (!cancelled) {
-        setBubbleAnimating(false);
-        setBubbleVisible(true);
-        await wait(4000);
+        setPillLeaving(false);
+        setPillVisible(true);
+        await wait(6000);
 
-        setBubbleAnimating(true);
+        setPillLeaving(true);
         await wait(300);
-        setBubbleVisible(false);
-        setBubbleAnimating(false);
+        setPillVisible(false);
+        setPillLeaving(false);
 
-        await wait(2500);
-
-        if (!cancelled) {
-          setBubbleIndex((i) => (i + 1) % bubbleQuestions.length);
-        }
+        await wait(7000);
       }
     };
 
@@ -320,19 +315,7 @@ function WidgetContent({
     return () => {
       cancelled = true;
     };
-  }, [chatOpen, bubbleQuestions.length]);
-
-  const handleBubbleClick = useCallback(
-    (question: string) => {
-      setChatOpen(true);
-      setBubbleVisible(false);
-      // Small delay so the chat panel opens first
-      setTimeout(() => {
-        chat.sendMessage(question);
-      }, 100);
-    },
-    [chat],
-  );
+  }, [chatOpen]);
 
   // Draggable launcher — users can reposition the floating button; it snaps to
   // the nearest horizontal edge on release and persists across reloads.
@@ -391,7 +374,6 @@ function WidgetContent({
       const dy = e.clientY - start.py;
       if (!start.moved && Math.hypot(dx, dy) < LAUNCHER_DRAG_THRESHOLD) return;
       start.moved = true;
-      setBubbleVisible(false);
       const maxLeft = window.innerWidth - LAUNCHER_SIZE - LAUNCHER_MARGIN;
       const maxTop = window.innerHeight - LAUNCHER_SIZE - LAUNCHER_MARGIN;
       const left = Math.min(
@@ -550,22 +532,32 @@ function WidgetContent({
               markRevealed={chat.markRevealed}
               companyName={companyName}
               companyLogoUrl={company?.logo_url}
-              footer={
-                <div className="px-4 pt-8 text-center font-mono text-[11px] uppercase leading-none text-black/40">
-                  POWERED BY{" "}
-                  <a
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    href="https://swiftagents.org"
-                    className="hover:underline"
-                  >
-                    SWIFTAGENTS.ORG
-                  </a>
-                </div>
-              }
             />
             )}
           </div>
+
+          {/* FAQ quick questions — shown until the visitor sends a message */}
+          {!companyLoading &&
+            chat.chatMessages.length <= 1 &&
+            bubbleQuestions.length > 0 && (
+              <div className="flex shrink-0 flex-col gap-2 px-4 pb-2">
+                {bubbleQuestions.slice(0, 3).map((question) => (
+                  <button
+                    key={question}
+                    onClick={() => chat.sendMessage(question)}
+                    disabled={chat.isChatLoading}
+                    className="flex w-fit max-w-full cursor-pointer items-center gap-[9px] rounded-full p-1 text-left transition-colors hover:bg-gray-50 disabled:cursor-default disabled:opacity-60"
+                  >
+                    <span className="font-sans flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#F6F6F6] text-[12px] font-bold text-black">
+                      ?
+                    </span>
+                    <span className="font-mono truncate text-[12px] tracking-[0.1em] text-black uppercase">
+                      {question}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
 
           {/* Input */}
           <div className="shrink-0 border border-[#D9D9D9] bg-white px-4 py-3 mx-3 mb-3 rounded-md">
@@ -578,6 +570,19 @@ function WidgetContent({
               onRemoveSelectedFile={chat.removeSelectedFile}
               isLoading={chat.isChatLoading}
             />
+          </div>
+
+          {/* Footer */}
+          <div className="shrink-0 pb-3 text-center font-mono text-[11px] uppercase leading-none text-black/40">
+            POWERED BY{" "}
+            <a
+              target="_blank"
+              rel="noreferrer noopener"
+              href="https://swiftagents.org"
+              className="hover:underline"
+            >
+              SWIFTAGENTS.ORG
+            </a>
           </div>
         </div>
       )}
@@ -593,24 +598,21 @@ function WidgetContent({
           )}
           style={launcherStyle}
         >
-          {/* Rotating prompt bubble */}
-          {!chatOpen && bubbleVisible && (
+          {/* Assistance pill */}
+          {!chatOpen && pillVisible && (
             <button
-              onClick={() => handleBubbleClick(bubbleQuestions[bubbleIndex])}
+              onClick={handleLauncherClick}
               style={{ boxShadow: "0 5px 20px rgba(0,0,0,0.28)" }}
               className={cn(
-                "flex cursor-pointer items-center gap-2.5 rounded-full bg-white px-5 py-3 transition-shadow",
-                bubbleAnimating
-                  ? "widget-bubble-exit"
-                  : "widget-animate-bubble",
+                "flex cursor-pointer items-center gap-2.5 rounded-full bg-white py-3.5 pr-6 pl-4 transition-shadow",
+                pillLeaving ? "widget-bubble-exit" : "widget-animate-bubble",
               )}
-              key={bubbleIndex}
             >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-bold text-gray-600">
+              <span className="font-mono flex h-[35px] w-[35px] shrink-0 items-center justify-center rounded-full bg-[#F6F6F6] text-lg font-medium text-black">
                 ?
               </span>
-              <span className="font-mono whitespace-nowrap text-xs font-medium tracking-wide text-black uppercase sm:text-sm">
-                {bubbleQuestions[bubbleIndex]}
+              <span className="font-mono whitespace-nowrap text-sm tracking-[0.1em] text-black uppercase">
+                Need assistance?
               </span>
             </button>
           )}

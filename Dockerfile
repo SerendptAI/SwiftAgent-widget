@@ -39,7 +39,6 @@ RUN npm ci --omit=dev
 # Copy built assets
 COPY --from=builder /app/dist ./dist
 COPY server.mjs ./
-COPY test.html ./
 
 # NOTE:
 # Optional folders (public/images/audio) removed to avoid CI build failures
