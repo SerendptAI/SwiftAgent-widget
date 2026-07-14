@@ -406,7 +406,14 @@ function SwapStageText({
  *  message was already fully revealed (close → reopen). */
 const TEXT_BLOCK_WARMUP_MS = 700;
 
-/** iMessage-style tail hanging off a bubble's bottom outer corner. */
+/** iMessage-style tail hanging off a bubble's bottom outer corner.
+ *  Side-specific paths (from the Figma asset) instead of a CSS mirror —
+ *  the widget's Tailwind build doesn't ship negative scale utilities. */
+const TAIL_PATHS = {
+  left: "M24 0V4C24 12 20 18 14 22C8 26 2 28 0 28C4 26 8 22 11 18C14 14 16 8 16 0H24Z",
+  right: "M0 0V4C0 12 4 18 10 22C16 26 22 28 24 28C20 26 16 22 13 18C10 14 8 8 8 0H0Z",
+} as const;
+
 function BubbleTail({ side }: { side: "left" | "right" }) {
   return (
     <svg
@@ -416,11 +423,11 @@ function BubbleTail({ side }: { side: "left" | "right" }) {
       className={cn(
         "absolute bottom-[-11px] h-[28px] w-[24px]",
         side === "left"
-          ? "left-[-8px] -scale-x-100 text-[#F2F8FF]"
+          ? "left-[-8px] text-[#F2F8FF]"
           : "right-[-8px] text-[#006BE5]",
       )}
     >
-      <path d="M0 0V4C0 12 4 18 10 22C16 26 22 28 24 28C20 26 16 22 13 18C10 14 8 8 8 0H0Z" />
+      <path d={TAIL_PATHS[side]} />
     </svg>
   );
 }
