@@ -271,9 +271,9 @@ function WidgetContent({
     );
     if (configured && configured.length > 0) return configured;
     return [
-      `What is ${companyName || "this company"} about`,
-      "Whats the pricing like?",
-      "Are you looking for support?",
+      `What is ${companyName || "this company"} about?`,
+      "How can I use it?",
+      "Do you have a starter plan?",
     ];
   }, [
     company?.suggested_ai_prompts,
@@ -550,22 +550,32 @@ function WidgetContent({
               markRevealed={chat.markRevealed}
               companyName={companyName}
               companyLogoUrl={company?.logo_url}
-              footer={
-                <div className="px-4 pt-8 text-center font-mono text-[11px] uppercase leading-none text-black/40">
-                  POWERED BY{" "}
-                  <a
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    href="https://swiftagents.org"
-                    className="hover:underline"
-                  >
-                    SWIFTAGENTS.ORG
-                  </a>
-                </div>
-              }
             />
             )}
           </div>
+
+          {/* FAQ quick questions — shown until the visitor sends a message */}
+          {!companyLoading &&
+            chat.chatMessages.length <= 1 &&
+            bubbleQuestions.length > 0 && (
+              <div className="flex shrink-0 flex-col gap-2 px-4 pb-2">
+                {bubbleQuestions.slice(0, 3).map((question) => (
+                  <button
+                    key={question}
+                    onClick={() => chat.sendMessage(question)}
+                    disabled={chat.isChatLoading}
+                    className="flex w-fit max-w-full cursor-pointer items-center gap-[9px] rounded-full p-1 text-left transition-colors hover:bg-gray-50 disabled:cursor-default disabled:opacity-60"
+                  >
+                    <span className="font-sans flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#F6F6F6] text-[12px] font-bold text-black">
+                      ?
+                    </span>
+                    <span className="font-mono truncate text-[12px] tracking-[0.1em] text-black uppercase">
+                      {question}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
 
           {/* Input */}
           <div className="shrink-0 border border-[#D9D9D9] bg-white px-4 py-3 mx-3 mb-3 rounded-md">
@@ -578,6 +588,19 @@ function WidgetContent({
               onRemoveSelectedFile={chat.removeSelectedFile}
               isLoading={chat.isChatLoading}
             />
+          </div>
+
+          {/* Footer */}
+          <div className="shrink-0 pb-3 text-center font-mono text-[11px] uppercase leading-none text-black/40">
+            POWERED BY{" "}
+            <a
+              target="_blank"
+              rel="noreferrer noopener"
+              href="https://swiftagents.org"
+              className="hover:underline"
+            >
+              SWIFTAGENTS.ORG
+            </a>
           </div>
         </div>
       )}
