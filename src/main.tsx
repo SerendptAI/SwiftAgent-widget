@@ -27,6 +27,7 @@ import { useVisitorLog } from "./hooks/use-visitor-log";
 import { useWidgetChat } from "./hooks/use-widget-chat";
 import { initApiClients } from "./lib/api-client";
 import { cn } from "./lib/cn";
+import { WIDGET_SCRIPT_SELECTOR } from "./lib/widget-asset-url";
 
 // --- Main Widget Component ---
 
@@ -711,7 +712,6 @@ function App({ companyId, mode }: { companyId: string; mode: WidgetMode }) {
 
 const WIDGET_HOST_ID = "swift-agent-widget-root";
 const WIDGET_FONT_STYLE_ID = "swift-agent-widget-fonts";
-const SCRIPT_SELECTOR = "script[data-company-id]";
 type WindowWithWidgetCss = Window & { __SWIFT_WIDGET_CSS__?: string };
 type WindowWithWidget = Window & {
   SwiftAgentWidget?: {
@@ -792,7 +792,7 @@ function mountWidget(companyId: string, options: MountOptions = {}) {
 
   const resolvedBase =
     baseUrl ??
-    resolveBaseUrl(document.querySelector<HTMLScriptElement>(SCRIPT_SELECTOR));
+    resolveBaseUrl(document.querySelector<HTMLScriptElement>(WIDGET_SCRIPT_SELECTOR));
 
   initApiClients(resolvedBase, apiKey);
 
@@ -855,7 +855,7 @@ function autoMount() {
 
   const script =
     (document.currentScript as HTMLScriptElement | null) ??
-    document.querySelector<HTMLScriptElement>(SCRIPT_SELECTOR);
+    document.querySelector<HTMLScriptElement>(WIDGET_SCRIPT_SELECTOR);
 
   const companyId = script?.getAttribute("data-company-id") ?? "";
   if (!companyId) return;
