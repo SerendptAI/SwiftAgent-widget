@@ -20,7 +20,7 @@ import {
   type UploadedAttachment,
 } from "../components/types";
 import { getApiKey, getBaseUrl } from "../lib/api-client";
-import { loadChatState, saveChatState } from "../lib/chat-storage";
+import { clearChatState, loadChatState, saveChatState } from "../lib/chat-storage";
 import {
   type ServerChatMessage,
   useChatSocket,
@@ -182,6 +182,7 @@ interface UseWidgetChatReturn {
   chatScrollRef: RefObject<HTMLDivElement | null>;
   handleSendChat: () => void;
   sendMessage: (text: string) => void;
+  startNewConversation: () => void;
   hasRevealed: (id: number) => boolean;
   markRevealed: (id: number) => void;
 }
@@ -202,9 +203,10 @@ export function useWidgetChat({
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
-  const chatSessionId = useMemo(
+  // State rather than derived, so starting a new conversation can mint a fresh
+  // session id; companyId is fixed for the widget's lifetime.
+  const [chatSessionId, setChatSessionId] = useState<string>(
     () => restored?.sessionId ?? crypto.randomUUID(),
-    [restored],
   );
 
   // The server only has a session once a message has been sent through it, so
@@ -889,6 +891,34 @@ export function useWidgetChat({
     [sendMessageInternal],
   );
 
+  /**
+   * Abandon the current thread and start a fresh one: new server session, new
+   * socket, empty history. Ignored while a reply is streaming — that request
+   * would finish against the old session and flip `hasServerSession` back on,
+   * pointing the socket at a session id the backend has never seen.
+   */
+  const startNewConversation = useCallback(() => {
+    if (isChatLoadingRef.current) return;
+
+    selectedFilesRef.current.forEach((file) => {
+      URL.revokeObjectURL(file.url);
+      attachmentUrlsRef.current.delete(file.url);
+    });
+
+    // Without this the next snapshot would replay the old thread's messages
+    // into the new one, since dedup state is keyed per message, not per session.
+    latestSnapshotRef.current = null;
+    ingestedKeysRef.current.clear();
+    revealedMessageIdsRef.current.clear();
+
+    clearChatState(companyId);
+    setHasServerSession(false);
+    setChatSessionId(crypto.randomUUID());
+    setChatMessages([GREETING_MESSAGE]);
+    setChatInput("");
+    setSelectedFiles([]);
+  }, [companyId]);
+
   return {
     chatMessages,
     chatInput,
@@ -901,6 +931,7 @@ export function useWidgetChat({
     chatScrollRef,
     handleSendChat,
     sendMessage,
+    startNewConversation,
     hasRevealed,
     markRevealed,
   };

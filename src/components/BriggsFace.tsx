@@ -1,4 +1,3 @@
-import riveWasmUrl from "@rive-app/canvas/rive.wasm?url";
 import {
   Alignment,
   Fit,
@@ -6,12 +5,18 @@ import {
   RuntimeLoader,
   useRive,
 } from "@rive-app/react-canvas";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import rivSrc from "../assets/5briggs_face_animations.riv";
 import fallbackSrc from "../assets/allexpression.webp";
+import { widgetAssetUrl } from "../lib/widget-asset-url";
 
-RuntimeLoader.setWasmUrl(riveWasmUrl);
+// Rive's runtime is a 1.7MB WASM binary. Importing it with `?url` base64-inlined
+// it into widget-ui.js, where it accounted for two thirds of the bundle every
+// host page had to download and parse before the launcher could paint. It now
+// ships as a sibling file (see the emit-rive-wasm plugin) and is fetched in
+// parallel, off the critical path.
+RuntimeLoader.setWasmUrl(widgetAssetUrl("rive.wasm"));
 
 interface BriggsFaceProps {
   className?: string;
@@ -33,6 +38,22 @@ export function BriggsFace({
   onPointerCancel,
 }: BriggsFaceProps) {
   const [riveFailed, setRiveFailed] = useState(false);
+  const [isRuntimeReady, setIsRuntimeReady] = useState(false);
+
+  // The webp is an animated fallback and is inlined in the bundle, so it paints
+  // with no network at all; Rive takes over once its runtime lands. This also
+  // covers the WASM never arriving — `awaitInstance` resolves on success but
+  // never rejects (Rive only logs), so a hung load simply leaves the webp up
+  // instead of the blank canvas an onLoadError-only path would leave behind.
+  useEffect(() => {
+    let cancelled = false;
+    void RuntimeLoader.awaitInstance().then(() => {
+      if (!cancelled) setIsRuntimeReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const { RiveComponent } = useRive({
     src: rivSrc,
@@ -57,14 +78,14 @@ export function BriggsFace({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
     >
-      {riveFailed ? (
+      {isRuntimeReady && !riveFailed ? (
+        <RiveComponent style={{ width: "100%", height: "100%" }} />
+      ) : (
         <img
           src={fallbackSrc}
           alt=""
           style={{ width: "100%", height: "100%", objectFit: "contain" }}
         />
-      ) : (
-        <RiveComponent style={{ width: "100%", height: "100%" }} />
       )}
     </button>
   );
