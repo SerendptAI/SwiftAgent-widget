@@ -1,3 +1,9 @@
+# Backend the widget talks to. Baked into the bundle at build time and read by
+# server.mjs for its /api/* passthrough, so one value defines the environment.
+# Pass --build-arg VITE_API_BASE_URL=https://staging-api.swiftagents.org for a
+# staging image.
+ARG VITE_API_BASE_URL=https://api.swiftagents.org
+
 # ─────────────────────────────────────────────
 # Stage 1 – Build the Vite widget bundle
 # ─────────────────────────────────────────────
@@ -12,7 +18,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 # Build-time environment variables
-ARG VITE_API_BASE_URL=https://api.swiftagents.org
+ARG VITE_API_BASE_URL
 ARG VITE_VOICE_API_URL=/
 
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
@@ -44,6 +50,8 @@ COPY server.mjs ./
 # Optional folders (public/images/audio) removed to avoid CI build failures
 
 # Runtime environment
+ARG VITE_API_BASE_URL
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 ENV NODE_ENV=production
 ENV PORT=3002
 

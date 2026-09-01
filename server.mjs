@@ -10,6 +10,8 @@
  * Env vars (via .env):
  *   ELEVENLABS_API_KEY   – required
  *   ELEVENLABS_VOICE_ID  – optional (default: JBFqnCBsd6RMkjVDRZzb)
+ *   VITE_API_BASE_URL    – optional; backend the /api/* passthrough targets,
+ *                          shared with the Vite build (default: https://api.swiftagents.org)
  *   PORT                 – optional (default: 3002)
  */
 
@@ -28,7 +30,10 @@ const PORT = process.env.PORT || 3002;
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_VOICE_ID =
   process.env.ELEVENLABS_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb";
-const API_TARGET_HOST = "api.swiftagents.org";
+const API_BASE_URL =
+  process.env.VITE_API_BASE_URL || "https://api.swiftagents.org";
+// The passthrough always speaks https on 443; only the host follows the env.
+const API_TARGET_HOST = new URL(API_BASE_URL).hostname;
 
 // Reuse TLS connections across proxy requests
 const proxyAgent = new https.Agent({ keepAlive: true });
