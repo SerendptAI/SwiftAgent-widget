@@ -28,6 +28,12 @@ export function getApiKey() {
   return _apiKey;
 }
 
+/** `X-API-Key` header for the authenticated endpoints; empty when no key was supplied. */
+export function apiKeyHeaders(): Record<string, string> {
+  const key = getApiKey();
+  return key ? { "X-API-Key": key } : {};
+}
+
 /** Base URL that goes through the local proxy server (avoids CORS issues) */
 export function getProxyBaseUrl() {
   return import.meta.env.VITE_VOICE_API_URL ?? "";

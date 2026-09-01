@@ -24,6 +24,7 @@ import {
 import { ChatSkeleton } from "./components/ChatSkeleton";
 import { usePublicCompanyQuery } from "./hooks/use-public-company";
 import { useVisitorLog } from "./hooks/use-visitor-log";
+import { useWebMCP } from "./hooks/use-webmcp";
 import { useWidgetChat } from "./hooks/use-widget-chat";
 import { initApiClients } from "./lib/api-client";
 import { cn } from "./lib/cn";
@@ -76,6 +77,7 @@ function WidgetContent({
   const chat = useWidgetChat({ companyId, enabled: chatOpen });
 
   useVisitorLog(companyId);
+  useWebMCP();
 
   const containerRef = useRef<HTMLDivElement>(null);
   // True while the user is parked at (or near) the bottom of the message list.
