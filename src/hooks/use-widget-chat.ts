@@ -19,7 +19,7 @@ import {
   type NavigationStep,
   type UploadedAttachment,
 } from "../components/types";
-import { getApiKey, getBaseUrl } from "../lib/api-client";
+import { apiKeyHeaders, getBaseUrl } from "../lib/api-client";
 import { clearChatState, loadChatState, saveChatState } from "../lib/chat-storage";
 import {
   type ServerChatMessage,
@@ -49,12 +49,6 @@ const ALLOWED_IMAGE_TYPES = new Set([
   "image/webp",
 ]);
 const ALLOWED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
-
-
-function apiKeyHeaders(): Record<string, string> {
-  const key = getApiKey();
-  return key ? { "X-API-Key": key } : {};
-}
 
 function normalizeHighlight(raw: unknown): NavigationStep["highlight"] {
   if (!raw) return undefined;
