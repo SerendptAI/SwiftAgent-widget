@@ -7,17 +7,15 @@ on:
       - staging
 
 jobs:
-  deploy-widget:
+  deploy:
     name: Deploy Widget
     runs-on: self-hosted
-
     steps:
-      - name: Deploy Production Widget
-        if: github.ref == 'refs/heads/main'
-        run: ./deploy.sh widget
-        working-directory: /home/ghrunner/swift-agents-prod
-
-      - name: Deploy Staging Widget
-        if: github.ref == 'refs/heads/staging'
-        run: ./deploy.sh widget-staging
+      - name: Run deployment script
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            ./deploy.sh widget
+          elif [ "${{ github.ref }}" = "refs/heads/staging" ]; then
+            ./deploy.sh staging-widget
+          fi
         working-directory: /home/ghrunner/swift-agents-prod
