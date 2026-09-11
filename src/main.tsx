@@ -33,7 +33,7 @@ import { WIDGET_SCRIPT_SELECTOR } from "./lib/widget-asset-url";
 
 export type WidgetMode = "widget" | "button";
 
-const LAUNCHER_SIZE = 72;
+const LAUNCHER_SIZE = 52;
 const LAUNCHER_MARGIN = 30;
 const LAUNCHER_DRAG_THRESHOLD = 6;
 const LAUNCHER_POS_KEY = "swift-agent-widget-launcher-pos";
@@ -620,14 +620,14 @@ function WidgetContent({
               onClick={handleLauncherClick}
               style={{ boxShadow: "0 5px 20px rgba(0,0,0,0.28)" }}
               className={cn(
-                "flex cursor-pointer items-center gap-2.5 rounded-full bg-white py-3.5 pr-6 pl-4 transition-shadow",
+                "flex cursor-pointer items-center gap-2 rounded-full bg-white py-2 pr-4 pl-3 transition-shadow",
                 pillLeaving ? "widget-bubble-exit" : "widget-animate-bubble",
               )}
             >
-              <span className="font-mono flex h-[35px] w-[35px] shrink-0 items-center justify-center rounded-full bg-[#F6F6F6] text-lg font-medium text-black">
+              <span className="font-mono flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#F6F6F6] text-sm font-medium text-black">
                 ?
               </span>
-              <span className="font-mono whitespace-nowrap text-sm tracking-[0.1em] text-black uppercase">
+              <span className="font-mono whitespace-nowrap text-xs text-black">
                 Need assistance?
               </span>
             </button>
