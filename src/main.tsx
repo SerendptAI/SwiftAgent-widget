@@ -851,8 +851,6 @@ function unmountWidget() {
 };
 
 function autoMount() {
-  if (window !== window.top) return;
-
   const script =
     (document.currentScript as HTMLScriptElement | null) ??
     document.querySelector<HTMLScriptElement>(WIDGET_SCRIPT_SELECTOR);
